@@ -5,7 +5,7 @@
   "description": "free, open-source chess server designed to play chess variants.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gbtami/pychess-variants.git"
+    "url": "https://github.com/pychess/pychess-variants.git"
   },
   "engines": {
     "node": "24.x",
@@ -15,7 +15,7 @@
   "author": "Bajusz Tamás",
   "license": "AGPL-3.0",
   "bugs": {
-    "url": "https://github.com/gbtami/pychess-variants/issues"
+    "url": "https://github.com/pychess/pychess-variants/issues"
   },
   "funding": "patreon.com/pychess",
   "dependencies": {

@@ -1072,7 +1072,7 @@ async def handle_abort_resign_abandon_flag(
 
     if game.status > STARTED:
         # game was already finished!
-        # see  https://github.com/gbtami/pychess-variants/issues/675
+        # see  https://github.com/pychess/pychess-variants/issues/675
         return
 
     async with game.move_lock:

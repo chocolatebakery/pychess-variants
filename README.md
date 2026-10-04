@@ -1,12 +1,12 @@
 ## [www.pychess.org](https://www.pychess.org)
 
-[![Python-CI](https://github.com/gbtami/pychess-variants/actions/workflows/ci.yml/badge.svg)](https://github.com/gbtami/pychess-variants/actions/workflows/ci.yml)
-[![Nodejs-CI](https://github.com/gbtami/pychess-variants/actions/workflows/nodejs.yml/badge.svg)](https://github.com/gbtami/pychess-variants/actions/workflows/nodejs.yml)
+[![Python-CI](https://github.com/pychess/pychess-variants/actions/workflows/ci.yml/badge.svg)](https://github.com/pychess/pychess-variants/actions/workflows/ci.yml)
+[![Nodejs-CI](https://github.com/pychess/pychess-variants/actions/workflows/nodejs.yml/badge.svg)](https://github.com/pychess/pychess-variants/actions/workflows/nodejs.yml)
 [![Discord](https://img.shields.io/discord/634298688663191582?label=Discord&logo=discord&style=flat)](https://discord.gg/aPs8RKr)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/gbtami/pychess-variants)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/pychess/pychess-variants)
 
 ---
-![pychess-variants.png](https://github.com/gbtami/pychess-variants/blob/c9617275f6f927b5a15d4424c4a847a73489c805/static/images/pychess-variants.png)
+![pychess-variants.png](https://github.com/pychess/pychess-variants/blob/c9617275f6f927b5a15d4424c4a847a73489c805/static/images/pychess-variants.png)
 
 Pychess-variants is a free, open-source chess server designed to play chess variants.
 

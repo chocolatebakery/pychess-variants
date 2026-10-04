@@ -1176,7 +1176,7 @@ export class RoundController extends GameController {
             } else {
                 window.location.assign(this.home + '/tv');
             }
-            // TODO: reuse current websocket to fix https://github.com/gbtami/pychess-variants/issues/142
+            // TODO: reuse current websocket to fix https://github.com/pychess/pychess-variants/issues/142
             // this.doSend({ type: "game_user_connected", username: this.username, gameId: msg.gameId });
         }
     };
@@ -1188,7 +1188,7 @@ export class RoundController extends GameController {
         // console.log("got board msg:", msg);
         let latestPly;
         if (this.spectator) {
-            // Fix https://github.com/gbtami/pychess-variants/issues/687
+            // Fix https://github.com/pychess/pychess-variants/issues/687
             latestPly = this.ply === -1 || msg.ply === this.ply + 1;
         } else {
             latestPly = this.ply === -1 || msg.ply >= this.ply + 1; // when receiving a board msg with full list of moves (aka steps) after reconnecting
@@ -1557,7 +1557,7 @@ export class RoundController extends GameController {
             }
 
             // Prevent sending "flag" message by opp clock via flagCallback
-            // fixes https://github.com/gbtami/pychess-variants/issues/1588
+            // fixes https://github.com/pychess/pychess-variants/issues/1588
             this.turnColor = this.oppcolor;
 
             if (this.clockOn) this.clocks[oppclock].start();
@@ -1854,7 +1854,7 @@ export class RoundController extends GameController {
             }
         }
         // We always need this to get possible moves made while our websocket connection was established
-        // fixes https://github.com/gbtami/pychess-variants/issues/962
+        // fixes https://github.com/pychess/pychess-variants/issues/962
         this.doSend({ type: 'board', gameId: this.gameId });
     };
 
