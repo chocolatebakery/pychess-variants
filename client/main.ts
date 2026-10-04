@@ -1,4 +1,5 @@
 import { sanitizeURL } from './url';
+import { installCsrfProtection } from './csrf';
 import { h, VNode } from 'snabbdom';
 import './securitySignals';
 
@@ -492,6 +493,7 @@ function initLoginDropdown() {
 }
 
 const el = document.getElementById('pychess-variants');
+installCsrfProtection(el);
 export const model: PyChessModel = el ? initModel(el) : initModel(new HTMLElement());
 
 if (el instanceof Element) {

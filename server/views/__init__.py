@@ -25,6 +25,7 @@ from const import (
     HTTP_ANON_USER,
     STARTED,
 )
+from csrf import ensure_csrf_token
 from fairy import BLACK, WHITE
 from json_utils import json_dumps
 from preferences import (
@@ -116,6 +117,7 @@ async def get_user_context(request: web.Request) -> tuple[User, ViewContext]:
     session = await aiohttp_session.get_session(request)
     session_user_value = session.get("user_name")
     session_user = session_user_value if isinstance(session_user_value, str) else None
+    csrf_token = ensure_csrf_token(session) if session_user is not None else ""
 
     if session_user is not None:
         session["last_visit"] = datetime.now(UTC).isoformat()
@@ -235,6 +237,7 @@ async def get_user_context(request: web.Request) -> tuple[User, ViewContext]:
         "view_css": ("round" if view == "tv" else view) + ".css",
         "anon": user.anon,
         "username": user.username,
+        "csrf_token": csrf_token,
         "piece_sets": piece_sets,
         "simuling": SIMULING,
         "admin": _is_admin_username(user.username),

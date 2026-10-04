@@ -17,6 +17,7 @@ from aiohttp.web_app import Application
 from aiohttp_session import SimpleCookieStorage
 from aiohttp_session.cookie_storage import EncryptedCookieStorage
 from aiohttp_swagger3 import SwaggerDocs, SwaggerInfo
+from csrf import csrf_protection_middleware
 from db_wrapper import AsyncDBWrapper
 from middlewares import (
     cross_origin_policy_middleware,
@@ -95,10 +96,12 @@ def make_app(
                     SECRET_KEY,
                     max_age=MAX_AGE,
                     secure=is_secure,
-                    samesite="None" if is_secure else "Lax",
+                    samesite="Lax",
                 )
             ),
         )
+
+        app.middlewares.append(csrf_protection_middleware)
 
         app[request_protection_state_key] = RequestProtectionState()
         app.middlewares.append(request_protection_middleware)

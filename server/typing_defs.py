@@ -497,6 +497,7 @@ class ViewContext(TypedDict, total=False):
     view_css: str
     anon: bool
     username: str
+    csrf_token: str
     piece_sets: list[str]
     simuling: bool
     admin: bool

@@ -1,0 +1,101 @@
+from unittest.mock import patch
+
+import aiohttp_session
+from aiohttp import web
+from aiohttp.test_utils import AioHTTPTestCase
+from aiohttp_session import SimpleCookieStorage
+from csrf import (
+    CSRF_FORM_FIELD,
+    CSRF_HEADER,
+    csrf_exempt,
+    csrf_protection_middleware,
+    ensure_csrf_token,
+)
+
+
+class CsrfProtectionTestCase(AioHTTPTestCase):
+    async def get_application(self):
+        app = web.Application()
+        aiohttp_session.setup(app, SimpleCookieStorage())
+        app.middlewares.append(csrf_protection_middleware)
+
+        async def establish_session(request: web.Request) -> web.Response:
+            session = await aiohttp_session.get_session(request)
+            session["user_name"] = "alice"
+            return web.json_response({"csrf": ensure_csrf_token(session)})
+
+        async def mutate(_request: web.Request) -> web.Response:
+            return web.json_response({"mutated": True})
+
+        @csrf_exempt
+        async def machine_mutate(_request: web.Request) -> web.Response:
+            return web.json_response({"mutated": True})
+
+        app.router.add_get("/session", establish_session)
+        app.router.add_post("/mutate", mutate)
+        app.router.add_post("/machine", machine_mutate)
+        return app
+
+    async def tearDownAsync(self):
+        await self.client.close()
+
+    async def _csrf_token(self) -> str:
+        response = await self.client.get("/session")
+        self.assertEqual(200, response.status)
+        payload = await response.json()
+        return str(payload["csrf"])
+
+    async def test_cross_site_post_is_rejected_even_with_session_cookie(self):
+        await self._csrf_token()
+
+        response = await self.client.post(
+            "/mutate",
+            headers={
+                "Origin": "https://attacker.test",
+                "Sec-Fetch-Site": "cross-site",
+            },
+        )
+
+        self.assertEqual(403, response.status)
+
+    async def test_same_origin_post_is_allowed(self):
+        await self._csrf_token()
+        origin = str(self.client.make_url("/")).rstrip("/")
+
+        response = await self.client.post(
+            "/mutate",
+            headers={"Origin": origin, "Sec-Fetch-Site": "same-origin"},
+        )
+
+        self.assertEqual(200, response.status)
+
+    async def test_missing_origin_requires_session_token_off_loopback(self):
+        token = await self._csrf_token()
+
+        with patch("csrf._is_loopback_request", return_value=False):
+            rejected = await self.client.post("/mutate")
+            accepted = await self.client.post("/mutate", headers={CSRF_HEADER: token})
+
+        self.assertEqual(403, rejected.status)
+        self.assertEqual(200, accepted.status)
+
+    async def test_form_token_is_accepted_when_origin_headers_are_missing(self):
+        token = await self._csrf_token()
+
+        with patch("csrf._is_loopback_request", return_value=False):
+            response = await self.client.post("/mutate", data={CSRF_FORM_FIELD: token})
+
+        self.assertEqual(200, response.status)
+
+    async def test_explicit_machine_route_exemption_bypasses_browser_csrf_guard(self):
+        await self._csrf_token()
+
+        response = await self.client.post(
+            "/machine",
+            headers={
+                "Origin": "https://attacker.test",
+                "Sec-Fetch-Site": "cross-site",
+            },
+        )
+
+        self.assertEqual(200, response.status)

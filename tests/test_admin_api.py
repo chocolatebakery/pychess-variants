@@ -46,6 +46,26 @@ class AdminApiTestCase(AioHTTPTestCase):
         self.assertFalse(target["shadowban"])
         self.assertEqual(0, await app_state.db.mod_log.count_documents({}))
 
+    async def test_cross_site_admin_close_is_blocked_before_mutation(self):
+        app_state = get_app_state(self.app)
+        app_state.users["mod"] = User(app_state, username="mod")
+        await self.insert_user("target")
+        self.set_session_user("mod")
+
+        with patch("admin_api.ADMINS", ["mod"]), patch("admin.ADMINS", ["mod"]):
+            response = await self.client.post(
+                "/api/admin/users/target/close",
+                headers={
+                    "Origin": "https://attacker.example",
+                    "Sec-Fetch-Site": "cross-site",
+                },
+            )
+
+        self.assertEqual(response.status, 403)
+        target = await app_state.db.user.find_one({"_id": "target"})
+        self.assertTrue(target["enabled"])
+        self.assertEqual(0, await app_state.db.mod_log.count_documents({}))
+
     async def test_protected_accounts_cannot_be_moderated(self):
         app_state = get_app_state(self.app)
         app_state.users["mod"] = User(app_state, username="mod")

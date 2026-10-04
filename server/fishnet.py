@@ -21,6 +21,7 @@ from catalogued_variants import (
     record_catalogued_variant_ai_failure,
 )
 from const import ANALYSIS, INVALIDMOVE, MOVE, STARTED
+from csrf import csrf_exempt
 from typing_defs import (
     AnalysisStep,
     FishnetAbortPayload,
@@ -1032,6 +1033,7 @@ async def get_work(
     return web.Response(status=204)
 
 
+@csrf_exempt
 async def fishnet_acquire(request: web.Request) -> web.Response:
     data_obj, error_status = await _read_fishnet_json(request)
     if data_obj is None:
@@ -1070,6 +1072,7 @@ async def fishnet_acquire(request: web.Request) -> web.Response:
     return response
 
 
+@csrf_exempt
 async def fishnet_analysis(request: web.Request) -> web.Response:
     work_id = request.match_info["workId"]
     data_obj, error_status = await _read_fishnet_json(request)
@@ -1185,6 +1188,7 @@ async def fishnet_analysis(request: web.Request) -> web.Response:
     return web.Response(status=204)
 
 
+@csrf_exempt
 async def fishnet_move(request: web.Request) -> web.Response:
     work_id = request.match_info["workId"]
     data_obj, error_status = await _read_fishnet_json(request)
@@ -1283,6 +1287,7 @@ async def fishnet_move(request: web.Request) -> web.Response:
     return response
 
 
+@csrf_exempt
 async def fishnet_abort(request: web.Request) -> web.Response:
     work_id = request.match_info["workId"]
     data_obj, error_status = await _read_fishnet_json(request)

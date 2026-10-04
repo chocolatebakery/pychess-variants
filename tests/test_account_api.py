@@ -337,6 +337,31 @@ class AccountApiTestCase(AioHTTPTestCase):
         self.assertNotIn("Inbox threads", body)
         self.assertIn("Public game archives are handled separately", body)
 
+    async def test_cross_site_delete_account_is_blocked_before_mutation(self):
+        app_state = get_app_state(self.app)
+        user = User(app_state, username="alice")
+        app_state.users[user.username] = user
+        await app_state.db.user.insert_one(
+            {"_id": "alice", "username_lower": "alice", "enabled": True}
+        )
+
+        self.set_session_user("alice")
+        response = await self.client.post(
+            "/account/delete",
+            data={"confirm_username": "alice", "understand": "on"},
+            headers={
+                "Origin": "https://attacker.test",
+                "Sec-Fetch-Site": "cross-site",
+            },
+            allow_redirects=False,
+        )
+
+        self.assertEqual(response.status, 403)
+        doc = await app_state.db.user.find_one({"_id": "alice"})
+        self.assertIsNotNone(doc)
+        self.assertTrue(doc.get("enabled", False))
+        self.assertTrue(user.enabled)
+
     async def test_close_account_disables_user(self):
         app_state = get_app_state(self.app)
         user = User(app_state, username="alice")
