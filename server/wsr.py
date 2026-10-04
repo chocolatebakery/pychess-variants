@@ -27,7 +27,7 @@ from cheat_report import (
     append_ceval_cheat_report,
     ceval_auto_lose_enabled,
 )
-from const import ANALYSIS, ANON_PREFIX, CASUAL, STARTED
+from const import ANALYSIS, ANON_PREFIX, CASUAL, IMPORTED, STARTED
 from draw import draw, reject_draw
 from fairy import BLACK, WHITE, FairyBoard
 from fishnet import (
@@ -59,7 +59,6 @@ if TYPE_CHECKING:
         CountMessage,
         CountResponse,
         DeletedMessage,
-        DeleteMessage,
         DrawMessage,
         EmbedUserConnectedMessage,
         FullChatMessage,
@@ -316,7 +315,7 @@ async def process_message(
     elif data["type"] == "count":
         await handle_count(ws, user, data, game)
     elif data["type"] == "delete":
-        await handle_delete(app_state.db, ws, data)
+        await handle_delete(app_state.db, ws, user, game)
 
 
 async def finally_logic(
@@ -1493,7 +1492,29 @@ async def handle_count(
         await ws_send_json(ws, response)
 
 
-async def handle_delete(db: AsyncDatabase, ws: WebSocketResponse, data: DeleteMessage) -> None:
-    await db.game.delete_one({"_id": data["gameId"]})
+async def handle_delete(
+    db: AsyncDatabase, ws: WebSocketResponse, user: User, game: game.Game
+) -> None:
+    if game.rated != IMPORTED or game.imported_by != user.username:
+        await ws_send_json(
+            ws,
+            {"type": "error", "message": "You are not allowed to delete this game."},
+        )
+        return
+
+    result = await db.game.delete_one(
+        {
+            "_id": game.id,
+            "y": IMPORTED,
+            "by": user.username,
+        }
+    )
+    if result.deleted_count != 1:
+        await ws_send_json(
+            ws,
+            {"type": "error", "message": "Game could not be deleted."},
+        )
+        return
+
     response: DeletedMessage = {"type": "deleted"}
     await ws_send_json(ws, response)
