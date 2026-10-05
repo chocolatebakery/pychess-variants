@@ -2086,6 +2086,12 @@ const RANDOM_MODE_RESULT_VARIANT_KEYS = new Set<string>([
     'orda',
     'losers',
     'giveaway',
+    'horde',
+    'seirawan',
+    'capablanca',
+    'knightmate',
+    'duck',
+    'hoppelpoppel',
 ]);
 
 export function isBuiltinVariantName(name: string | undefined | null): boolean {

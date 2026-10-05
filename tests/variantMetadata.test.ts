@@ -6,8 +6,57 @@ import {
     cwdaArmyClassNames,
     cwdaEngineVariant,
     devVariants,
+    disabledVariantsForCreateMode,
+    isRandomModeOrResultVariant,
+    registerCataloguedVariant,
+    unregisterCataloguedVariant,
     VARIANTS,
 } from '../client/variants';
+
+test.each(['crazyhouse', 'horde', 'seirawan', 'capablanca', 'duck', 'hoppelpoppel'])(
+    'Random Dice result %s remains visible while creation uses the random modes',
+    name => {
+        expect(isRandomModeOrResultVariant(name)).toBe(true);
+        expect(disabledVariantsForCreateMode('createGame', '', false)).toContain(name);
+        expect(disabledVariantsForCreateMode('playFriend', '', false)).toContain(name);
+    },
+);
+
+test.each(['duck', 'hoppelpoppel'])(
+    'the extra Random Dice variant %s uses an 8x8 board',
+    name => {
+        expect(VARIANTS[name].board.dimensions).toEqual({ width: 8, height: 8 });
+        expect(VARIANTS[name].rules.defaultTimeControl).toBe('incremental');
+    },
+);
+
+test('Knightmate is available as a catalogued Random Dice result on an 8x8 board', () => {
+    registerCataloguedVariant({
+        name: 'knightmate',
+        displayName: 'Knightmate',
+        source: 'fairy-stockfish-builtin',
+        fsfBuiltinVariant: 'knightmate',
+        clientVariant: 'chess',
+        ini: '',
+        startFen: 'rmbqkbmr/pppppppp/8/8/8/8/PPPPPPPP/RMBQKBMR w KQkq - 0 1',
+        width: 8,
+        height: 8,
+        pieces: ['p', 'm', 'b', 'r', 'q', 'k'],
+        kingRoles: ['k'],
+        promotionRoles: ['p'],
+        promotionOrder: ['m', 'q', 'r', 'b'],
+    });
+
+    try {
+        expect(isRandomModeOrResultVariant('knightmate')).toBe(true);
+        expect(VARIANTS.knightmate.board.dimensions).toEqual({ width: 8, height: 8 });
+        expect(VARIANTS.knightmate.rules.defaultTimeControl).toBe('incremental');
+        expect(VARIANTS.knightmate.pieceRow.white).toContain('m-piece');
+        expect(VARIANTS.knightmate.promotion.order).toContain('m');
+    } finally {
+        unregisterCataloguedVariant('knightmate');
+    }
+});
 
 test('hidden info metadata is set for fogofwar', () => {
     expect(VARIANTS.fogofwar.hiddenInfo).toBe(true);

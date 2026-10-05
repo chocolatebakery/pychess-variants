@@ -63,6 +63,54 @@ class RandomModesTestCase(unittest.TestCase):
         self.assertEqual(previous_entry_id_from_context(rematch_context), entry.entry_id)
         self.assertEqual(rematch_context["previousGameId"], "game123")
 
+    def test_random_dice_rematches_exclude_each_previous_result(self) -> None:
+        for previous_entry in RANDOM_DICE_POOL.entries:
+            with self.subTest(variant=previous_entry.variant):
+                context = random_context_for_entry(RANDOM_MODE_DICE, previous_entry)
+                rematch_context = rematch_context_for_game(context, "dicegame")
+                assert rematch_context is not None
+
+                with patch(
+                    "random_modes.random.choices", side_effect=lambda pool, **_: [pool[0]]
+                ) as choices:
+                    selected = select_random_mode_entry(
+                        RANDOM_MODE_DICE, previous_entry_id_from_context(rematch_context)
+                    )
+
+                self.assertNotEqual(selected.entry_id, previous_entry.entry_id)
+                population = choices.call_args.args[0]
+                self.assertEqual(
+                    {entry.entry_id for entry in population},
+                    {entry.entry_id for entry in RANDOM_DICE_POOL.entries} - {previous_entry.entry_id},
+                )
+                self.assertEqual(choices.call_args.kwargs["weights"], [1] * 12)
+
+    def test_random_dice_rematch_upgrades_old_pool_context(self) -> None:
+        old_context: dict[str, object] = {
+            "mode": RANDOM_MODE_DICE,
+            "poolId": RANDOM_DICE_POOL.pool_id,
+            "poolVersion": 1,
+            "entryId": "dice-chess960",
+        }
+
+        rematch_context = rematch_context_for_game(old_context, "oldgame")
+
+        assert rematch_context is not None
+        self.assertEqual(rematch_context["poolVersion"], 2)
+        self.assertEqual(rematch_context["previousEntryId"], "dice-chess960")
+        self.assertEqual(old_context["poolVersion"], 1)
+
+    def test_random_dice_knightmate_uses_native_engine_rules(self) -> None:
+        import pyffish as sf
+
+        entry = next(entry for entry in RANDOM_DICE_POOL.entries if entry.variant == "knightmate")
+        fen = sf.start_fen(entry.variant)
+
+        self.assertEqual(sf.validate_fen(fen, entry.variant, entry.chess960), sf.FEN_OK)
+        moves = sf.legal_moves(entry.variant, fen, [], entry.chess960)
+        self.assertIn("e1d3", moves)
+        self.assertIn("e1f3", moves)
+
     def test_random_pool_real_variant_keys_are_expected(self) -> None:
         self.assertEqual(
             {(entry.variant, entry.chess960) for entry in WILD29_POOL.entries},

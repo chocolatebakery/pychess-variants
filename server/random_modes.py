@@ -75,7 +75,7 @@ RANDOM_DICE_POOL = RandomModePool(
     mode=RANDOM_MODE_DICE,
     display_name="Random Dice",
     pool_id="random-dice-supported",
-    version=1,
+    version=2,
     entries=(
         RandomModeEntry("dice-atomic", "Atomic", "atomic"),
         RandomModeEntry("dice-orda", "Orda", "orda"),
@@ -83,6 +83,13 @@ RANDOM_DICE_POOL = RandomModePool(
         RandomModeEntry("dice-3check", "Three-check", "3check"),
         RandomModeEntry("dice-kingofthehill", "King of the Hill", "kingofthehill"),
         RandomModeEntry("dice-chess960", "Chess960", "chess", chess960=True),
+        RandomModeEntry("dice-crazyhouse", "Crazyhouse", "crazyhouse"),
+        RandomModeEntry("dice-horde", "Horde", "horde"),
+        RandomModeEntry("dice-seirawan", "Seirawan Chess", "seirawan"),
+        RandomModeEntry("dice-capablanca", "Capablanca Chess", "capablanca"),
+        RandomModeEntry("dice-knightmate", "Knightmate", "knightmate"),
+        RandomModeEntry("dice-duck", "Duck Chess", "duck"),
+        RandomModeEntry("dice-hoppelpoppel", "Hoppel-Poppel", "hoppelpoppel"),
     ),
 )
 
