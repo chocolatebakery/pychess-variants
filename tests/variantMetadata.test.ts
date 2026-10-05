@@ -8,12 +8,17 @@ import {
     devVariants,
     disabledVariantsForCreateMode,
     isRandomModeOrResultVariant,
+    isRandomModeVariant,
     registerCataloguedVariant,
     unregisterCataloguedVariant,
     VARIANTS,
+    variants,
 } from '../client/variants';
 
-test.each(['crazyhouse', 'horde', 'seirawan', 'capablanca', 'duck', 'hoppelpoppel'])(
+test.each([
+    'crazyhouse', 'horde', 'seirawan', 'capablanca', 'duck', 'hoppelpoppel',
+    'racingkings', 'fogofwar', 'alice', 'makruk', 'shogi', 'xiangqi', 'janggi',
+])(
     'Random Dice result %s remains visible while creation uses the random modes',
     name => {
         expect(isRandomModeOrResultVariant(name)).toBe(true);
@@ -21,6 +26,51 @@ test.each(['crazyhouse', 'horde', 'seirawan', 'capablanca', 'duck', 'hoppelpoppe
         expect(disabledVariantsForCreateMode('playFriend', '', false)).toContain(name);
     },
 );
+
+test.each([
+    ['racingkings', 8, 8], ['fogofwar', 8, 8], ['alice', 8, 8], ['makruk', 8, 8],
+    ['shogi', 9, 9], ['xiangqi', 9, 10], ['janggi', 9, 10],
+] as const)('Random Dice result %s retains its board dimensions', (name, width, height) => {
+    expect(VARIANTS[name].board.dimensions).toEqual({ width, height });
+});
+
+test('Atomar uses its own engine rules and Atomic artwork as a Dice result', () => {
+    registerCataloguedVariant({
+        name: 'atomar',
+        displayName: 'Atomar',
+        source: 'fairy-stockfish-builtin',
+        fsfBuiltinVariant: 'atomar',
+        baseVariant: 'nocheckatomic',
+        clientVariant: 'atomic',
+        ini: '',
+        startFen: VARIANTS.atomic.startFen,
+        width: 8,
+        height: 8,
+        pieces: ['p', 'n', 'b', 'r', 'q', 'k'],
+        kingRoles: ['k'],
+        promotionRoles: ['p'],
+        promotionOrder: ['q', 'r', 'b', 'n'],
+    });
+    try {
+        expect(isRandomModeOrResultVariant('atomar')).toBe(true);
+        expect(VARIANTS.atomar.board.dimensions).toEqual({ width: 8, height: 8 });
+        expect(VARIANTS.atomar.pieceFamily).toBe(VARIANTS.atomic.pieceFamily);
+        expect(VARIANTS.atomar.name).toBe('atomar');
+        expect(VARIANTS.atomar.cataloguedSource).toBe('fairy-stockfish-builtin');
+        expect(isRandomModeVariant('atomar')).toBe(false);
+    } finally {
+        unregisterCataloguedVariant('atomar');
+    }
+});
+
+test('AI creation offers only Wild 29 and Random Dice, including for guests', () => {
+    for (const anon of [false, true]) {
+        const disabled = disabledVariantsForCreateMode('playAI', '', anon);
+        expect(variants.filter(name => !disabled.includes(name))).toEqual(['wild29', 'randomdice']);
+        expect(disabled.every(name => !isRandomModeVariant(name))).toBe(true);
+    }
+    expect(disabledVariantsForCreateMode('playBOT', 'external-bot', false)).toEqual(variants);
+});
 
 test.each(['duck', 'hoppelpoppel'])(
     'the extra Random Dice variant %s uses an 8x8 board',

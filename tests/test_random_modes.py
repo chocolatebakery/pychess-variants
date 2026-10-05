@@ -24,14 +24,17 @@ class RandomModesTestCase(unittest.TestCase):
         self.assertFalse(is_random_mode("atomic"))
 
     def test_wild29_pool_uses_supported_icc_entries_only(self) -> None:
-        self.assertEqual({entry.entry_id for entry in WILD29_POOL.entries}, {
-            "icc-wild17",
-            "icc-wild22",
-            "icc-wild23",
-            "icc-wild25",
-            "icc-wild26",
-            "icc-wild27",
-        })
+        self.assertEqual(
+            {entry.entry_id for entry in WILD29_POOL.entries},
+            {
+                "icc-wild17",
+                "icc-wild22",
+                "icc-wild23",
+                "icc-wild25",
+                "icc-wild26",
+                "icc-wild27",
+            },
+        )
         self.assertIn(("wild3", 1), WILD29_UNIMPLEMENTED_ICC_ENTRIES)
 
     def test_random_dice_includes_chess960(self) -> None:
@@ -81,24 +84,83 @@ class RandomModesTestCase(unittest.TestCase):
                 population = choices.call_args.args[0]
                 self.assertEqual(
                     {entry.entry_id for entry in population},
-                    {entry.entry_id for entry in RANDOM_DICE_POOL.entries} - {previous_entry.entry_id},
+                    {entry.entry_id for entry in RANDOM_DICE_POOL.entries}
+                    - {previous_entry.entry_id},
                 )
-                self.assertEqual(choices.call_args.kwargs["weights"], [1] * 12)
+                self.assertEqual(
+                    choices.call_args.kwargs["weights"], [1] * (len(RANDOM_DICE_POOL.entries) - 1)
+                )
 
     def test_random_dice_rematch_upgrades_old_pool_context(self) -> None:
-        old_context: dict[str, object] = {
-            "mode": RANDOM_MODE_DICE,
-            "poolId": RANDOM_DICE_POOL.pool_id,
-            "poolVersion": 1,
-            "entryId": "dice-chess960",
-        }
+        for version in (1, 2):
+            with self.subTest(version=version):
+                old_context: dict[str, object] = {
+                    "mode": RANDOM_MODE_DICE,
+                    "poolId": RANDOM_DICE_POOL.pool_id,
+                    "poolVersion": version,
+                    "entryId": "dice-chess960",
+                }
 
-        rematch_context = rematch_context_for_game(old_context, "oldgame")
+                rematch_context = rematch_context_for_game(old_context, "oldgame")
 
-        assert rematch_context is not None
-        self.assertEqual(rematch_context["poolVersion"], 2)
-        self.assertEqual(rematch_context["previousEntryId"], "dice-chess960")
-        self.assertEqual(old_context["poolVersion"], 1)
+                assert rematch_context is not None
+                self.assertEqual(rematch_context["poolVersion"], 3)
+                self.assertEqual(rematch_context["previousEntryId"], "dice-chess960")
+                self.assertEqual(old_context["poolVersion"], version)
+
+    def test_random_dice_has_all_requested_variants_with_equal_weights(self) -> None:
+        self.assertEqual(
+            {entry.variant for entry in RANDOM_DICE_POOL.entries},
+            {
+                "atomic",
+                "orda",
+                "losers",
+                "3check",
+                "kingofthehill",
+                "chess",
+                "crazyhouse",
+                "horde",
+                "seirawan",
+                "capablanca",
+                "knightmate",
+                "duck",
+                "hoppelpoppel",
+                "atomar",
+                "racingkings",
+                "fogofwar",
+                "alice",
+                "makruk",
+                "shogi",
+                "xiangqi",
+                "janggi",
+            },
+        )
+        self.assertEqual(len(RANDOM_DICE_POOL.entries), 21)
+        self.assertEqual(len({entry.entry_id for entry in RANDOM_DICE_POOL.entries}), 21)
+        self.assertTrue(all(entry.weight == 1 for entry in RANDOM_DICE_POOL.entries))
+
+    def test_new_dice_variants_use_native_rules_and_can_make_a_move(self) -> None:
+        from fairy import FairyBoard
+
+        for variant in (
+            "atomar",
+            "racingkings",
+            "fogofwar",
+            "alice",
+            "makruk",
+            "shogi",
+            "xiangqi",
+            "janggi",
+        ):
+            with self.subTest(variant=variant):
+                board = FairyBoard(variant)
+                moves = board.legal_moves()
+                self.assertTrue(moves)
+                self.assertEqual(board.variant, variant)
+                initial_fen = board.fen
+                board.push(moves[0])
+                self.assertEqual(board.ply, 1)
+                self.assertNotEqual(board.fen, initial_fen)
 
     def test_random_dice_knightmate_uses_native_engine_rules(self) -> None:
         import pyffish as sf

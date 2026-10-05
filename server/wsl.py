@@ -12,7 +12,7 @@ from auto_pair import (
     auto_pair,
     find_matching_user_for_seek,
 )
-from const import STARTED, SYSTEM_USER
+from const import AI_OFFLINE_MESSAGE, STARTED, SYSTEM_USER
 from fishnet import has_available_fishnet_worker
 from header_challenges import (
     broadcast_challenge_state,
@@ -313,19 +313,31 @@ async def handle_create_ai_challenge(
             return
 
     variant = data["variant"]
-    if is_random_mode(variant):
+    random_mode = is_random_mode(variant)
+    profileid = data["profileid"]
+    if random_mode and profileid not in ("Fairy-Stockfish", "Random-Mover"):
         await ws_send_json(ws, {"type": "error", "message": BOT_UNSUPPORTED_VARIANT_MESSAGE})
         return
 
-    profileid = data["profileid"]
     engine = app_state.users[profileid]
+    if (
+        random_mode
+        and not data["rm"]
+        and profileid == "Fairy-Stockfish"
+        and (not has_available_fishnet_worker(app_state) or engine is None or not engine.online)
+    ):
+        await ws_send_json(ws, {"type": "error", "message": AI_OFFLINE_MESSAGE})
+        return
+
     force_random_mover = (
         variant in UNSUPPORTED_FSF_AI_VARIANTS
         or data["rm"]
+        or profileid == "Random-Mover"
         or (engine is None)
         or (not engine.online)
         or (
             profileid == "Fairy-Stockfish"
+            and not random_mode
             and not has_available_fishnet_worker(app_state, variant=variant)
         )
     )
@@ -365,8 +377,10 @@ async def handle_create_ai_challenge(
 
     if response["type"] != "error":
         gameId = response["gameId"]
-        engine.game_queues[gameId] = asyncio.Queue()
         game = app_state.games[gameId]
+        if random_mode and game.variant == "alice" and not force_random_mover:
+            engine = game.wplayer if game.wplayer.bot else game.bplayer
+        engine.game_queues[gameId] = asyncio.Queue()
         await send_bot_game_start_unless_streaming(engine, game)
 
 
@@ -670,8 +684,8 @@ async def handle_accept_seek(
             return
 
     # print("accept_seek", seek.seek_json)
-    server_variant = None if is_random_mode(seek.variant) else get_server_variant(
-        seek.variant, seek.chess960
+    server_variant = (
+        None if is_random_mode(seek.variant) else get_server_variant(seek.variant, seek.chess960)
     )
     if server_variant is not None and server_variant.two_boards:
         await handle_accept_seek_bughouse(app_state, user, data, seek)

@@ -906,6 +906,38 @@ async def new_game(
         assert bplayer is not None
         assert chess960 is not None
 
+    if random_context is not None:
+        engine = wplayer if wplayer.bot else bplayer
+        if engine.bot and engine.username in ("Fairy-Stockfish", "Alice-Stockfish"):
+            if variant == "fogofwar":
+                remove_seek(app_state.seeks, seek)
+                return {
+                    "type": "error",
+                    "message": "Fairy-Stockfish does not support Fog of War. Select Random-Mover.",
+                }
+            if variant == "alice":
+                from fishnet import has_available_fishnet_worker
+
+                alice_engine = app_state.users.data.get("Alice-Stockfish")
+                if (
+                    alice_engine is None
+                    or not has_available_fishnet_worker(app_state, variant=variant)
+                    or not alice_engine.online
+                ):
+                    remove_seek(app_state.seeks, seek)
+                    return {
+                        "type": "error",
+                        "message": "Alice-Stockfish is offline. Connect a worker with Alice support "
+                        "or select Random-Mover.",
+                    }
+                engine = alice_engine
+            else:
+                engine = app_state.users["Fairy-Stockfish"]
+            if wplayer.bot:
+                wplayer = engine
+            else:
+                bplayer = engine
+
     if game_id is None:
         game_id = await new_id(None if app_state.db is None else app_state.db.game)
 

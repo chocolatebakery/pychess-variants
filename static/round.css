@@ -7,6 +7,13 @@
     grid-column-gap: 2vmin;
 }
 
+/* Shogi's seven reserve slots must fit the sidebar without stretching the pieces. */
+#pychess-variants[data-variant="shogi"] .round-app .pocket:not(.cg-wrap) {
+    max-width: 100%;
+    height: auto;
+    aspect-ratio: calc(var(--pocketLength) * 11 / 12);
+}
+
 #aliceboard {
     display: none;
     grid-area: alice-board;

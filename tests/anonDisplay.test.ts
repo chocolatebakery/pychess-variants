@@ -129,11 +129,11 @@ test('only random modes are enabled for create and invite flows', async () => {
     expect(disabledVariantsForCreateMode('playFriend', '', false)).not.toContain('wild29');
 });
 
-test('play with AI is disabled for the random-only lobby', async () => {
+test('play with AI is enabled only for the two random modes', async () => {
     const disabled = disabledVariantsForCreateMode('playAI', '', false);
     expect(disabled).toContain('alice');
-    expect(disabled).toContain('wild29');
-    expect(disabled).toContain('randomdice');
+    expect(disabled).not.toContain('wild29');
+    expect(disabled).not.toContain('randomdice');
     expect(disabled).toContain('fogofwar');
     expect(disabled).toContain('jieqi');
 });

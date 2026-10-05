@@ -215,6 +215,57 @@ Outras ENV, apenas se fores usar a integracao correspondente:
 
 Deixa as integracoes que nao vais usar por definir. Nao coloques valores ficticios.
 
+Jogar contra a AI (Wild 29 e Random Dice):
+  O lobby tem o botao "Play with AI". A variante e sorteada ao iniciar a partida,
+  incluindo Chess960 quando sair no sorteio. Cada revanche volta a sortear.
+  As partidas contra bots sao sempre casual.
+
+  Fairy-Stockfish precisa de um worker fairyfishnet ligado. Nao basta PROD=true
+  nem configurar uma ENV: o worker calcula os lances num processo separado.
+  Pode correr no teu PC, desde que fique ligado e com acesso a Internet.
+
+  1. Gera uma chave privada com letras/numeros (hexadecimal e adequado).
+     No Render, adiciona FISHNET_KEYS com um objeto JSON neste formato:
+       {"SUBSTITUIRporCHAVEaleatoria":"worker-principal"}
+     Substitui a chave de exemplo pela real e faz redeploy. Nao a publiques no Git.
+     Tambem podes criar uma chave no painel administrativo, guardada no MongoDB.
+
+  2. Na maquina do worker, instala uv e executa:
+       uv tool install --with pip fairyfishnet
+       fairyfishnet --endpoint https://TEU-SERVICO.onrender.com/fishnet/ configure
+     Introduz a mesma chave quando o programa pedir. O endpoint deve ser o do
+     TEU site, nao o de pychess.org. Deixa o programa obter o Fairy-Stockfish
+     compativel e configura um numero de cores adequado a maquina.
+
+  3. No mesmo diretorio da configuracao, inicia:
+       fairyfishnet
+     Mantem este processo ligado para disponibilizar a AI. A primeira execucao
+     pode demorar enquanto descarrega o motor e os ficheiros NNUE.
+
+  Sem worker, o site mostra que Fairy-Stockfish esta offline. Podes selecionar
+  explicitamente Random-Mover no dialogo para jogar sem worker; esse bot escolhe
+  lances legais ao acaso, nao calcula como Fairy-Stockfish.
+
+  O Random Dice inclui 21 variantes, com pesos iguais:
+    Atomic, Orda, Losers, Three-check, King of the Hill, Chess960, Crazyhouse,
+    Horde, Seirawan Chess, Capablanca Chess, Knightmate, Duck Chess, Hoppel-Poppel,
+    Atomar, Racing Kings, Fog of War, Alice Chess, Makruk, Shogi, Xiangqi e Janggi.
+  Wild 29 mantem o seu pool ICC e Atomic com xeques.
+
+  Atomar e distinto de Atomic: usa as regras nativas de nocheckatomic do motor.
+  Shogi usa 9x9; Xiangqi e Janggi usam 9x10; Alice usa dois planos de 8x8.
+  O controlo de tempo escolhido no Dice mantem-se mesmo nestas variantes.
+
+  Se sair Fog of War contra Fairy-Stockfish, o site mostra um aviso, pois nao
+  existe suporte nessa AI. Random-Mover pode jogar todas as variantes do Dice.
+  Alice contra AI precisa de um worker que anuncie suporte a Alice e mantenha
+  Alice-Stockfish online; o worker Fairy-Stockfish normal nao basta. Tambem e
+  necessaria a conta de bot Alice-Stockfish na base (title: "BOT"), carregada
+  no arranque do servidor. Se faltar esse suporte, o site mostra um aviso sem
+  criar uma partida sem motor.
+
+  Referencia: https://github.com/gbtami/fairyfishnet
+
 
 7. EXEMPLO DE CONFIGURACAO INICIAL
 --------------------------------

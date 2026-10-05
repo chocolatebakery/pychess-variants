@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import test_logger
+from const import AI_OFFLINE_MESSAGE
 from utils import join_seek
 from variants import register_catalogued_server_variant, unregister_catalogued_server_variant
 from wsl import handle_accept_seek, handle_create_ai_challenge
@@ -408,6 +409,95 @@ class WslCreateAiChallengeJanggiTestCase(unittest.IsolatedAsyncioTestCase):
             )
 
         bot_put.assert_awaited_once_with(game.game_start)
+
+
+class RandomModeAiChallengeTestCase(unittest.IsolatedAsyncioTestCase):
+    async def challenge(
+        self, mode, *, worker=True, online=True, rm=False, profile="Fairy-Stockfish"
+    ):
+        def bot(name):
+            return SimpleNamespace(
+                username=name,
+                bot=True,
+                online=online,
+                event_queue=SimpleNamespace(put=AsyncMock()),
+                game_queues={},
+                active_game_streams=set(),
+            )
+
+        fairy = bot("Fairy-Stockfish")
+        random_mover = bot("Random-Mover")
+        random_mover.online = True
+        app_state = SimpleNamespace(
+            users={fairy.username: fairy, random_mover.username: random_mover},
+            games={"g1": SimpleNamespace(id="g1", variant="chess", game_start="game-start")},
+            db=None,
+        )
+        join = AsyncMock(return_value={"type": "new_game", "gameId": "g1"})
+        send = AsyncMock()
+        with (
+            patch("wsl.send_game_in_progress_if_any", new=AsyncMock(return_value=False)),
+            patch("wsl.new_id", new=AsyncMock(return_value="seek1")),
+            patch("wsl.ws_send_json", new=send),
+            patch("wsl.join_seek", new=join),
+            patch("wsl.has_available_fishnet_worker", return_value=worker),
+        ):
+            await handle_create_ai_challenge(
+                app_state,
+                object(),
+                DummyUser("tester"),
+                create_ai_payload(mode)
+                | {
+                    "rm": rm,
+                    "profileid": profile,
+                    "rated": True,
+                    "fen": "ignored",
+                    "chess960": True,
+                },
+            )
+        return fairy, random_mover, join, send
+
+    async def test_random_modes_use_fairy_stockfish_and_keep_the_seek_unresolved(self):
+        for mode in ("wild29", "randomdice"):
+            with self.subTest(mode=mode):
+                fairy, _, join, _ = await self.challenge(mode)
+                self.assertIs(join.await_args.args[1], fairy)
+                seek = join.await_args.args[2]
+                self.assertEqual(seek.variant, mode)
+                self.assertEqual(seek.random_context["mode"], mode)
+                self.assertEqual(seek.level, 2)
+                self.assertFalse(seek.rated)
+                self.assertFalse(seek.chess960)
+                self.assertEqual(seek.fen, "")
+                self.assertIn("g1", fairy.game_queues)
+                fairy.event_queue.put.assert_awaited_once_with("game-start")
+
+    async def test_offline_ai_is_reported_without_a_silent_random_mover_fallback(self):
+        for mode in ("wild29", "randomdice"):
+            for worker, online in ((False, True), (True, False)):
+                with self.subTest(mode=mode, worker=worker, online=online):
+                    fairy, random_mover, join, send = await self.challenge(
+                        mode, worker=worker, online=online
+                    )
+                    join.assert_not_awaited()
+                    self.assertEqual(
+                        send.await_args.args[1], {"type": "error", "message": AI_OFFLINE_MESSAGE}
+                    )
+                    self.assertFalse(fairy.game_queues)
+                    self.assertFalse(random_mover.game_queues)
+
+    async def test_explicit_random_mover_works_without_fishnet(self):
+        for mode in ("wild29", "randomdice"):
+            with self.subTest(mode=mode):
+                _, random_mover, join, _ = await self.challenge(mode, worker=False, rm=True)
+                self.assertIs(join.await_args.args[1], random_mover)
+                self.assertEqual(join.await_args.args[2].level, 0)
+                random_mover.event_queue.put.assert_awaited_once_with("game-start")
+
+    async def test_random_modes_do_not_accept_arbitrary_external_bot_profiles(self):
+        _, _, join, send = await self.challenge("wild29", profile="external-bot")
+        join.assert_not_awaited()
+        self.assertEqual(send.await_args.args[1]["type"], "error")
 
 
 if __name__ == "__main__":

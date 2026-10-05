@@ -2093,6 +2093,14 @@ const RANDOM_MODE_RESULT_VARIANT_KEYS = new Set<string>([
     'knightmate',
     'duck',
     'hoppelpoppel',
+    'atomar',
+    'racingkings',
+    'fogofwar',
+    'alice',
+    'makruk',
+    'shogi',
+    'xiangqi',
+    'janggi',
 ]);
 
 export function isBuiltinVariantName(name: string | undefined | null): boolean {
@@ -2952,7 +2960,7 @@ export function disabledVariantsForCreateMode(
     void anon;
     void botSupportedVariants;
     const nonRandomModes = variants.filter(v => !isRandomModeVariant(v));
-    if (createMode === 'createGame' || createMode === 'playFriend') return nonRandomModes;
+    if (createMode === 'createGame' || createMode === 'playFriend' || createMode === 'playAI') return nonRandomModes;
     return variants;
 }
 

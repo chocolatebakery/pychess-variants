@@ -27,7 +27,7 @@ from cheat_report import (
     append_ceval_cheat_report,
     ceval_auto_lose_enabled,
 )
-from const import ANALYSIS, ANON_PREFIX, CASUAL, IMPORTED, STARTED
+from const import AI_OFFLINE_MESSAGE, ANALYSIS, ANON_PREFIX, CASUAL, IMPORTED, STARTED
 from draw import draw, reject_draw
 from fairy import BLACK, WHITE, FairyBoard
 from fishnet import (
@@ -806,6 +806,17 @@ async def handle_rematch(
 
         if opp_player.bot:
             engine = opp_player
+            if random_rematch_context is not None and engine.username == "Alice-Stockfish":
+                engine = app_state.users["Fairy-Stockfish"]
+
+            if (
+                random_rematch_context is not None
+                and engine.username == "Fairy-Stockfish"
+                and (not has_available_fishnet_worker(app_state) or not engine.online)
+            ):
+                error_response = {"type": "error", "message": AI_OFFLINE_MESSAGE}
+                await ws_send_json(ws, error_response)
+                return error_response
 
             if not engine.online:
                 if engine.username in ("Fairy-Stockfish", "Alice-Stockfish", "Random-Mover"):
@@ -852,8 +863,14 @@ async def handle_rematch(
             gameId = response["gameId"]
             rematch_id = gameId
             game.rematch_id = rematch_id
-            engine.game_queues[gameId] = asyncio.Queue()
             rematch_game = app_state.games[gameId]
+            if (
+                random_rematch_context is not None
+                and rematch_game.variant == "alice"
+                and engine.username == "Fairy-Stockfish"
+            ):
+                engine = rematch_game.wplayer if rematch_game.wplayer.bot else rematch_game.bplayer
+            engine.game_queues[gameId] = asyncio.Queue()
             await send_bot_game_start_unless_streaming(engine, rematch_game)
         else:
             if opp_name in game.rematch_offers:

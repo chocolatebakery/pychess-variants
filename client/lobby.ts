@@ -650,6 +650,11 @@ export class LobbyController {
         return [
             h('button.lobby-button', { on: { click: () => this.createGame() } }, createModeStr('createGame')),
             h('button.lobby-button', { on: { click: () => this.playFriend() } }, createModeStr('playFriend')),
+            h('button.lobby-button', { on: { click: () => this.playAI() } }, [
+                h('span.icon.icon-bot', { attrs: { 'aria-hidden': 'true' } }),
+                ' ',
+                createModeStr('playAI'),
+            ]),
         ];
     }
 

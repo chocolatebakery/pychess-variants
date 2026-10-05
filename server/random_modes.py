@@ -4,7 +4,6 @@ import random
 from dataclasses import dataclass
 from typing import NotRequired, TypedDict
 
-
 RANDOM_MODE_WILD29 = "wild29"
 RANDOM_MODE_DICE = "randomdice"
 
@@ -75,7 +74,7 @@ RANDOM_DICE_POOL = RandomModePool(
     mode=RANDOM_MODE_DICE,
     display_name="Random Dice",
     pool_id="random-dice-supported",
-    version=2,
+    version=3,
     entries=(
         RandomModeEntry("dice-atomic", "Atomic", "atomic"),
         RandomModeEntry("dice-orda", "Orda", "orda"),
@@ -90,6 +89,14 @@ RANDOM_DICE_POOL = RandomModePool(
         RandomModeEntry("dice-knightmate", "Knightmate", "knightmate"),
         RandomModeEntry("dice-duck", "Duck Chess", "duck"),
         RandomModeEntry("dice-hoppelpoppel", "Hoppel-Poppel", "hoppelpoppel"),
+        RandomModeEntry("dice-atomar", "Atomar", "atomar"),
+        RandomModeEntry("dice-racingkings", "Racing Kings", "racingkings"),
+        RandomModeEntry("dice-fogofwar", "Fog of War", "fogofwar"),
+        RandomModeEntry("dice-alice", "Alice Chess", "alice"),
+        RandomModeEntry("dice-makruk", "Makruk", "makruk"),
+        RandomModeEntry("dice-shogi", "Shogi", "shogi"),
+        RandomModeEntry("dice-xiangqi", "Xiangqi", "xiangqi"),
+        RandomModeEntry("dice-janggi", "Janggi", "janggi"),
     ),
 )
 
@@ -126,12 +133,12 @@ def previous_entry_id_from_context(context: RandomContext | dict[str, object] | 
     return str(previous_entry_id) if previous_entry_id else None
 
 
-def select_random_mode_entry(
-    mode: str, previous_entry_id: str | None = None
-) -> RandomModeEntry:
+def select_random_mode_entry(mode: str, previous_entry_id: str | None = None) -> RandomModeEntry:
     pool = _pool(mode)
     candidates = [
-        entry for entry in pool.entries if previous_entry_id is None or entry.entry_id != previous_entry_id
+        entry
+        for entry in pool.entries
+        if previous_entry_id is None or entry.entry_id != previous_entry_id
     ]
     if not candidates:
         candidates = list(pool.entries)

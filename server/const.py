@@ -17,6 +17,9 @@ TEST_PREFIX = "Test" + DASH
 NONE_USER = "None" + DASH + "User"
 HTTP_ANON_USER = ANON_PREFIX + "HTTP"
 SYSTEM_USER = "PyChess"
+AI_OFFLINE_MESSAGE = (
+    "Fairy-Stockfish is offline. Connect a fairyfishnet worker or select Random-Mover."
+)
 
 RESERVED_USERS = (
     "Random-Mover",
