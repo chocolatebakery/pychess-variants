@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import random
+import secrets
 from dataclasses import dataclass
 from typing import NotRequired, TypedDict
 
@@ -144,7 +144,16 @@ def select_random_mode_entry(mode: str, previous_entry_id: str | None = None) ->
         candidates = list(pool.entries)
     if not candidates:
         raise RandomModeError("Random mode pool has no entries: %s" % mode)
-    return random.choices(candidates, weights=[entry.weight for entry in candidates], k=1)[0]
+    if any(entry.weight <= 0 for entry in candidates):
+        raise RandomModeError("Random mode weights must be positive: %s" % mode)
+
+    # Each unit of weight owns one integer ticket from the operating system's RNG.
+    ticket = secrets.randbelow(sum(entry.weight for entry in candidates))
+    for entry in candidates:
+        if ticket < entry.weight:
+            return entry
+        ticket -= entry.weight
+    raise RandomModeError("Random mode draw is outside the weighted range: %s" % mode)
 
 
 def random_context_for_entry(

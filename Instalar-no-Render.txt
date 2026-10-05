@@ -252,6 +252,11 @@ Jogar contra a AI (Wild 29 e Random Dice):
     Atomar, Racing Kings, Fog of War, Alice Chess, Makruk, Shogi, Xiangqi e Janggi.
   Wild 29 mantem o seu pool ICC e Atomic com xeques.
 
+  O sorteio das variantes usa secrets.randbelow(), com a fonte de aleatoriedade
+  do sistema operativo. Nao precisa de ENV nem de configurar uma seed. Mantem
+  os pesos atuais e exclui apenas a variante anterior nas revanches; nao usa
+  ciclos de variantes nem procura equilibrar as frequencias das ultimas partidas.
+
   Atomar e distinto de Atomic: usa as regras nativas de nocheckatomic do motor.
   Shogi usa 9x9; Xiangqi e Janggi usam 9x10; Alice usa dois planos de 8x8.
   O controlo de tempo escolhido no Dice mantem-se mesmo nestas variantes.
