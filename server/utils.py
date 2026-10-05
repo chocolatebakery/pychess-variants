@@ -100,6 +100,58 @@ NO_LEGAL_MOVES_START_FEN_MESSAGE = (
 MAX_CUSTOM_FEN_LENGTH = 4096
 FAIRY_STOCKFISH_MAX_ACTIVE_PIECES = 128
 FAIRY_STOCKFISH_POCKET_SLOTS_PER_FILE = 2
+REALTIME_GAME_IN_PROGRESS_MESSAGE = "You already have a realtime game in progress."
+
+
+def active_realtime_game_for_user(
+    app_state: PychessGlobalAppState,
+    user: User | None,
+    *,
+    allowed_simul_id: str | None = None,
+):
+    """Return an active non-correspondence game that blocks a new realtime game.
+
+    ``app_state.games`` is authoritative here rather than ``User.game_in_progress``.
+    The latter is intentionally only a single navigation hint and cannot represent
+    a simul host's several simultaneous boards.
+    """
+    if user is None or user.bot:
+        return None
+
+    for game in getattr(app_state, "games", {}).values():
+        if game.status > STARTED or getattr(game, "corr", False):
+            continue
+        if allowed_simul_id is not None and getattr(game, "simulId", None) == allowed_simul_id:
+            continue
+        if any(player.username == user.username for player in game.non_bot_players):
+            return game
+    return None
+
+
+def realtime_game_conflict(
+    app_state: PychessGlobalAppState,
+    players,
+    *,
+    allowed_simul_id: str | None = None,
+    simul_host_username: str | None = None,
+):
+    """Return ``(player, game)`` for the first blocked realtime participant.
+
+    A simul host may already be playing other boards belonging to that same simul.
+    Duplicate seats in one two-board seek are collapsed by username, allowing the
+    supported one-person-team Bughouse/Supply-style setup without permitting an
+    unrelated second realtime game.
+    """
+    seen: set[str] = set()
+    for player in players:
+        if player is None or player.bot or player.username in seen:
+            continue
+        seen.add(player.username)
+        same_simul = allowed_simul_id if player.username == simul_host_username else None
+        game = active_realtime_game_for_user(app_state, player, allowed_simul_id=same_simul)
+        if game is not None:
+            return player, game
+    return None
 
 
 async def put_bot_game_queue(player: User, game_id: str, payload: str) -> bool:
@@ -701,6 +753,11 @@ async def join_seek(
     if is_targeted_two_board_seek(seek.variant, seek.chess960, seek.target):
         return {"type": "error", "message": TWO_BOARD_TARGETED_SEEK_MESSAGE}
 
+    if seek.day == 0:
+        conflict = realtime_game_conflict(app_state, (seek.player1, seek.player2, user))
+        if conflict is not None:
+            return {"type": "error", "message": REALTIME_GAME_IN_PROGRESS_MESSAGE}
+
     if not getattr(seek, "is_rr_challenge", False) and (
         seek.creator.username in user.blocked or user.username in seek.creator.blocked
     ):
@@ -804,14 +861,28 @@ async def new_game(
         assert bplayer is not None
         assert seek.chess960 is not None
 
-    if game_id is not None:
-        # game invitation
-        del app_state.invites[game_id]
-    else:
-        game_id = await new_id(None if app_state.db is None else app_state.db.game)
-
-    # print("new_game", game_id, seek.variant, seek.fen, wplayer, bplayer, seek.base, seek.inc, seek.level, seek.rated, seek.chess960)
+    realtime_locked = seek.day == 0
+    if realtime_locked:
+        await app_state.realtime_game_creation_lock.acquire()
     try:
+        if realtime_locked:
+            conflict = realtime_game_conflict(app_state, (wplayer, bplayer))
+            if conflict is not None:
+                player, active_game = conflict
+                log.info(
+                    "Rejecting realtime game creation for %s; active game %s is still running",
+                    player.username,
+                    active_game.id,
+                )
+                return {"type": "error", "message": REALTIME_GAME_IN_PROGRESS_MESSAGE}
+
+        if game_id is not None:
+            # game invitation
+            app_state.invites.pop(game_id, None)
+        else:
+            game_id = await new_id(None if app_state.db is None else app_state.db.game)
+
+        # print("new_game", game_id, seek.variant, seek.fen, wplayer, bplayer, seek.base, seek.inc, seek.level, seek.rated, seek.chess960)
         catalogued_casual = is_catalogued_variant(seek.variant)
         any_bot_player = wplayer.bot or bplayer.bot
         rated = (
@@ -842,6 +913,7 @@ async def new_game(
             new_960_fen_needed_for_rematch=seek.reused_fen,
             is_rematch=seek.is_rematch,
         )
+        app_state.games[game_id] = game
     except Exception:
         log.exception(
             "Creating new game %s failed! %s 960:%s FEN:%s %s vs %s",
@@ -854,7 +926,9 @@ async def new_game(
         )
         remove_seek(app_state.seeks, seek)
         return {"type": "error", "message": "Failed to create game"}
-    app_state.games[game_id] = game
+    finally:
+        if realtime_locked:
+            app_state.realtime_game_creation_lock.release()
 
     if seek.is_direct_challenge:
         seek.set_challenge_status(DIRECT_CHALLENGE_ACCEPTED)

@@ -21,7 +21,13 @@ from glicko2.glicko2 import gl2
 from newid import new_id
 from pychess_global_app_state import PychessGlobalAppState
 from seek import ANON_RESTRICTED_SEEK_MESSAGE, is_anon_restricted_seek
-from utils import remove_seek, round_broadcast, sanitize_fen
+from utils import (
+    REALTIME_GAME_IN_PROGRESS_MESSAGE,
+    realtime_game_conflict,
+    remove_seek,
+    round_broadcast,
+    sanitize_fen,
+)
 from variants import C2V, GRANDS
 from websocket_utils import ws_send_json_many
 
@@ -450,14 +456,21 @@ async def new_game_bughouse(app_state: PychessGlobalAppState, seek_id, game_id=N
         (seek.player1, seek.bugPlayer1) if color == "b" else (seek.player2, seek.bugPlayer2)
     )
 
-    if game_id is not None:
-        # game invitation
-        del app_state.invites[game_id]
-    else:
-        game_id = await new_id(None if app_state.db is None else app_state.db.game)
-
-    # print("new_game", game_id, seek.variant, seek.fen, wplayer, bplayer, seek.base, seek.inc, seek.level, seek.rated, seek.chess960)
+    await app_state.realtime_game_creation_lock.acquire()
     try:
+        conflict = realtime_game_conflict(
+            app_state, (wplayer, bplayer, bug_wplayer, bug_bplayer)
+        )
+        if conflict is not None:
+            return {"type": "error", "message": REALTIME_GAME_IN_PROGRESS_MESSAGE}
+
+        if game_id is not None:
+            # game invitation
+            app_state.invites.pop(game_id, None)
+        else:
+            game_id = await new_id(None if app_state.db is None else app_state.db.game)
+
+        # print("new_game", game_id, seek.variant, seek.fen, wplayer, bplayer, seek.base, seek.inc, seek.level, seek.rated, seek.chess960)
         if TYPE_CHECKING:
             assert seek.chess960 is not None
         any_bot_player = wplayer.bot or bplayer.bot or bug_wplayer.bot or bug_bplayer.bot
@@ -484,6 +497,7 @@ async def new_game_bughouse(app_state: PychessGlobalAppState, seek_id, game_id=N
             create=True,
             new_960_fen_needed_for_rematch=seek.reused_fen,
         )
+        app_state.games[game_id] = game
     except Exception:
         log.exception(
             "Creating new BugHouse game %s failed! %s 960:%s FEN:%s %s+%s vs %s+%s",
@@ -499,7 +513,8 @@ async def new_game_bughouse(app_state: PychessGlobalAppState, seek_id, game_id=N
 
         remove_seek(app_state.seeks, seek)
         return {"type": "error", "message": "Failed to create game"}
-    app_state.games[game_id] = game
+    finally:
+        app_state.realtime_game_creation_lock.release()
 
     remove_seek(app_state.seeks, seek)
 
@@ -585,6 +600,13 @@ async def join_seek_bughouse(
     app_state: PychessGlobalAppState, user, seek_id, game_id=None, join_as="any"
 ):
     seek = app_state.seeks[seek_id]
+
+    conflict = realtime_game_conflict(
+        app_state,
+        (seek.player1, seek.player2, seek.bugPlayer1, seek.bugPlayer2, user),
+    )
+    if conflict is not None:
+        return {"type": "error", "message": REALTIME_GAME_IN_PROGRESS_MESSAGE}
 
     log.info(
         "+++ BUGHOUSE Seek %s joined by %s FEN:%s 960:%s",

@@ -80,7 +80,13 @@ from seek import (
     user_reached_seek_limit,
 )
 from tournament_director import is_tournament_director
-from utils import join_seek, load_game, remove_seek, send_bot_game_start_unless_streaming
+from utils import (
+    active_realtime_game_for_user,
+    join_seek,
+    load_game,
+    remove_seek,
+    send_bot_game_start_unless_streaming,
+)
 from variants import get_server_variant, is_catalogued_variant
 from websocket_utils import get_user, process_ws, ws_send_json, ws_send_json_many
 from ws_structs import LOBBY_TYPED_DECODERS
@@ -297,9 +303,10 @@ async def handle_create_ai_challenge(
     if await _reject_bot_lobby_action(ws, user):
         return
 
-    no = await send_game_in_progress_if_any(app_state, user, ws)
-    if no:
-        return
+    if data.get("day", 0) == 0:
+        no = await send_game_in_progress_if_any(app_state, user, ws)
+        if no:
+            return
 
     variant = data["variant"]
     profileid = data["profileid"]
@@ -361,9 +368,10 @@ async def handle_create_seek(
     if await _reject_bot_lobby_action(ws, user):
         return
 
-    no = await send_game_in_progress_if_any(app_state, user, ws)
-    if no:
-        return
+    if data.get("day", 0) == 0:
+        no = await send_game_in_progress_if_any(app_state, user, ws)
+        if no:
+            return
 
     if await _reject_inaccessible_catalogued_variant(app_state, ws, user, data["variant"]):
         return
@@ -434,9 +442,10 @@ async def handle_create_invite(
     if await _reject_bot_lobby_action(ws, user):
         return
 
-    no = await send_game_in_progress_if_any(app_state, user, ws)
-    if no:
-        return
+    if data.get("day", 0) == 0:
+        no = await send_game_in_progress_if_any(app_state, user, ws)
+        if no:
+            return
 
     if await _reject_inaccessible_catalogued_variant(app_state, ws, user, data["variant"]):
         return
@@ -641,9 +650,10 @@ async def handle_accept_seek(
     ):
         return
 
-    no = await send_game_in_progress_if_any(app_state, user, ws)
-    if no:
-        return
+    if getattr(seek, "day", 0) == 0:
+        no = await send_game_in_progress_if_any(app_state, user, ws)
+        if no:
+            return
 
     # print("accept_seek", seek.seek_json)
     server_variant = get_server_variant(seek.variant, seek.chess960)
@@ -815,17 +825,29 @@ async def send_game_in_progress_if_any(
     # Prevent None user to handle seeks
     if user is None:
         return True
-    # Prevent users to start new games if they have an unfinished one
-    if user.game_in_progress is not None:
-        game = await load_game(app_state, user.game_in_progress)
-        if (game is None) or game.status > STARTED:
-            user.game_in_progress = None
-            return False
+    # ``game_in_progress`` is only a navigation hint; it cannot represent a
+    # simul host's multiple boards. The live game cache is authoritative for
+    # realtime admission.
+    game = active_realtime_game_for_user(app_state, user)
+    if game is not None:
+        user.game_in_progress = game.id
         response: GameInProgressMessage = {
             "type": "game_in_progress",
-            "gameId": user.game_in_progress,
+            "gameId": game.id,
         }
         await ws_send_json(ws, response)
         return True
-    else:
-        return False
+
+    # Clear a stale navigation hint when no active realtime game exists.
+    if user.game_in_progress is not None:
+        stale = await load_game(app_state, user.game_in_progress)
+        if stale is None or stale.status > STARTED or getattr(stale, "corr", False):
+            user.game_in_progress = None
+        else:
+            response: GameInProgressMessage = {
+                "type": "game_in_progress",
+                "gameId": stale.id,
+            }
+            await ws_send_json(ws, response)
+            return True
+    return False

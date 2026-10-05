@@ -243,6 +243,10 @@ class PychessGlobalAppState:
             self.study_analysis_request_lock = asyncio.Lock()
             self.study_socket_users: dict[str, dict[WebSocketResponse, str]] = {}
             self.background_tasks: set[asyncio.Task[Any]] = set()
+            # Serialize the tiny admission window for realtime game creation.
+            # This prevents two concurrent accepts/AI starts/pairings from both
+            # observing a player as free and creating overlapping live games.
+            self.realtime_game_creation_lock = asyncio.Lock()
             self.game_remove_tasks: dict[str, asyncio.Task[None]] = {}
             self.tournament_remove_tasks: dict[str, asyncio.Task[None]] = {}
             self.tournament_cache_access: dict[str, float] = {}

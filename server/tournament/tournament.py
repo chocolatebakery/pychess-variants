@@ -79,7 +79,7 @@ from profile_counts import refresh_tournament_points
 from settings import URI
 from spectators import spectators
 from user import User
-from utils import insert_game_to_db
+from utils import insert_game_to_db, realtime_game_conflict
 from variants import get_server_variant, is_catalogued_variant
 
 log = logging.getLogger(__name__)
@@ -1742,23 +1742,37 @@ class Tournament(ABC):
         games = []
         game_table = None if self.app_state.db is None else self.app_state.db.game
         for wp, bp in pairing:
-            game_id = await new_id(game_table)
-            game = Game(
-                self.app_state,
-                game_id,
-                self.variant,
-                self.fen,
-                wp,
-                bp,
-                base=self.base,  # type: ignore[arg-type]
-                inc=self.inc,
-                byoyomi_period=self.byoyomi_period,
-                rated=RATED if self.rated else CASUAL,
-                tournamentId=self.id,
-                chess960=self.chess960,
-            )
-            # Round index is persisted with pairing docs to keep Swiss round history unambiguous.
-            game.round = self.current_round  # type: ignore[attr-defined]
+            async with self.app_state.realtime_game_creation_lock:
+                conflict = realtime_game_conflict(self.app_state, (wp, bp))
+                if conflict is not None:
+                    player, active_game = conflict
+                    log.warning(
+                        "Skipping tournament pairing %s-%s: %s still has active game %s",
+                        wp.username,
+                        bp.username,
+                        player.username,
+                        active_game.id,
+                    )
+                    continue
+
+                game_id = await new_id(game_table)
+                game = Game(
+                    self.app_state,
+                    game_id,
+                    self.variant,
+                    self.fen,
+                    wp,
+                    bp,
+                    base=self.base,  # type: ignore[arg-type]
+                    inc=self.inc,
+                    byoyomi_period=self.byoyomi_period,
+                    rated=RATED if self.rated else CASUAL,
+                    tournamentId=self.id,
+                    chess960=self.chess960,
+                )
+                # Round index is persisted with pairing docs to keep Swiss round history unambiguous.
+                game.round = self.current_round  # type: ignore[attr-defined]
+                self.app_state.games[game_id] = game
 
             if game.has_crosstable:
                 doc = await self.app_state.db.crosstable.find_one({"_id": game.ct_id})
@@ -1766,7 +1780,6 @@ class Tournament(ABC):
                     game.crosstable = doc
 
             games.append(game)
-            self.app_state.games[game_id] = game
             await insert_game_to_db(game, self.app_state)
 
             self.ongoing_games.add(game)
