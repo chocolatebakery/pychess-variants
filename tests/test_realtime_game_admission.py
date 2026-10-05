@@ -81,6 +81,19 @@ class RealtimeGameAdmissionTestCase(AioHTTPTestCase):
         self.assertIsNone(seek.player2)
         self.assertIn(game.id, state.games)
 
+    async def test_rejected_join_does_not_leave_seek_occupied(self):
+        state = get_app_state(self.app)
+        self.add_untouched_ai_game()
+
+        seek = Seek("retry001", self.bob, "chess", player1=self.bob)
+        response = await join_seek(state, self.alice, seek)
+
+        self.assertEqual(
+            response,
+            {"type": "error", "message": REALTIME_GAME_IN_PROGRESS_MESSAGE},
+        )
+        self.assertIsNone(seek.player2)
+
     async def test_active_realtime_game_does_not_block_correspondence(self):
         state = get_app_state(self.app)
         self.add_untouched_ai_game()

@@ -753,11 +753,6 @@ async def join_seek(
     if is_targeted_two_board_seek(seek.variant, seek.chess960, seek.target):
         return {"type": "error", "message": TWO_BOARD_TARGETED_SEEK_MESSAGE}
 
-    if seek.day == 0:
-        conflict = realtime_game_conflict(app_state, (seek.player1, seek.player2, user))
-        if conflict is not None:
-            return {"type": "error", "message": REALTIME_GAME_IN_PROGRESS_MESSAGE}
-
     if not getattr(seek, "is_rr_challenge", False) and (
         seek.creator.username in user.blocked or user.username in seek.creator.blocked
     ):
@@ -803,29 +798,37 @@ async def join_seek(
         response: SeekStatusMessage = {"type": "seek_yourself", "seekID": seek.id}
         return response
 
+    joined_slot: str | None = None
     if join_as == "player1":
         if seek.player1 is None:
             seek.player1 = user
+            joined_slot = "player1"
         else:
             response: SeekStatusMessage = {"type": "seek_occupied", "seekID": seek.id}
             return response
     elif join_as == "player2":
         if seek.player2 is None:
             seek.player2 = user
+            joined_slot = "player2"
         else:
             response: SeekStatusMessage = {"type": "seek_occupied", "seekID": seek.id}
             return response
     else:
         if seek.player1 is None:
             seek.player1 = user
+            joined_slot = "player1"
         elif seek.player2 is None:
             seek.player2 = user
+            joined_slot = "player2"
         else:
             response: SeekStatusMessage = {"type": "seek_occupied", "seekID": seek.id}
             return response
 
     if seek.player1 is not None and seek.player2 is not None:
-        return await new_game(app_state, seek, game_id)
+        response = await new_game(app_state, seek, game_id)
+        if response["type"] == "error" and joined_slot is not None:
+            setattr(seek, joined_slot, None)
+        return response
     else:
         response: SeekStatusMessage = {"type": "seek_joined", "seekID": seek.id}
         return response
@@ -861,6 +864,9 @@ async def new_game(
         assert bplayer is not None
         assert seek.chess960 is not None
 
+    if game_id is None:
+        game_id = await new_id(None if app_state.db is None else app_state.db.game)
+
     realtime_locked = seek.day == 0
     if realtime_locked:
         await app_state.realtime_game_creation_lock.acquire()
@@ -875,12 +881,6 @@ async def new_game(
                     active_game.id,
                 )
                 return {"type": "error", "message": REALTIME_GAME_IN_PROGRESS_MESSAGE}
-
-        if game_id is not None:
-            # game invitation
-            app_state.invites.pop(game_id, None)
-        else:
-            game_id = await new_id(None if app_state.db is None else app_state.db.game)
 
         # print("new_game", game_id, seek.variant, seek.fen, wplayer, bplayer, seek.base, seek.inc, seek.level, seek.rated, seek.chess960)
         catalogued_casual = is_catalogued_variant(seek.variant)
@@ -929,6 +929,10 @@ async def new_game(
     finally:
         if realtime_locked:
             app_state.realtime_game_creation_lock.release()
+
+    if seek.game_id is not None:
+        # game invitation; only consume it after admission succeeded
+        app_state.invites.pop(seek.game_id, None)
 
     if seek.is_direct_challenge:
         seek.set_challenge_status(DIRECT_CHALLENGE_ACCEPTED)
