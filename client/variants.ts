@@ -240,6 +240,7 @@ export const PIECE_FAMILIES: Record<string, PieceFamily> = {
             'disguised',
         ],
     },
+    knightmate: { pieceCSS: ['standard'] },
     capa: { pieceCSS: ['capa0', 'capa1', 'capa2', 'capa3', 'capa4', 'capa5', 'disguised'] },
     centaur: { pieceCSS: ['centaur0', 'centaur1', 'disguised'] },
     dragon: { pieceCSS: ['dragon1', 'dragon0', 'dragon2', 'disguised'] },
@@ -2774,6 +2775,15 @@ function cataloguedCompatiblePieceSource(
             pieceCSSExclude: [],
             variantName: meta.name,
             roleCount: 0,
+        };
+    }
+
+    if (meta.source === 'fairy-stockfish-builtin' && meta.fsfBuiltinVariant === 'knightmate') {
+        return {
+            pieceFamily: 'knightmate',
+            pieceCSSExclude: [],
+            variantName: meta.name,
+            roleCount: 6,
         };
     }
 

@@ -79,7 +79,8 @@ label.piece.piece4.paradigm {
     background-image: url('images/pieces/disguised/w.svg');
 }
 
-label.piece.piece0.standard {
+label.piece.piece0.standard,
+label.piece.piece0.knightmate {
     background-image: url('images/pieces/merida/wN.svg');
 }
 label.piece.piece1.standard {

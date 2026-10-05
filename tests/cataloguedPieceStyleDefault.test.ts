@@ -23,6 +23,7 @@ const variantNames = [
     'testfsfgrandcapa',
     'testfsfpieceoptioncapa',
     'testfsfthreekingsstandard',
+    'testfsfknightmatepieces',
     'testreformedcourieroverride',
     'testcentauroverride',
     'testmakrukwall',
@@ -59,6 +60,40 @@ test('catalogued variants with a compatible built-in piece family default to tha
 
     expect(variant.pieceFamily).toBe(cataloguedCompatiblePieceFamily(meta, { ignoreCustomPieceSet: true }));
     expect(boardSettings.pieceCSS(variant.pieceFamily, variant)).toBe(PIECE_FAMILIES[variant.pieceFamily].pieceCSS[0]);
+});
+
+test('Knightmate defaults to its normal-chess artwork without changing engine roles', () => {
+    const meta: CataloguedVariantClientDocument = {
+        name: 'testfsfknightmatepieces',
+        displayName: 'Knightmate',
+        source: 'fairy-stockfish-builtin',
+        fsfBuiltinVariant: 'knightmate',
+        clientVariant: 'chess',
+        ini: '',
+        startFen: 'rmbqkbmr/pppppppp/8/8/8/8/PPPPPPPP/RMBQKBMR w KQkq - 0 1',
+        width: 8,
+        height: 8,
+        pieces: ['p', 'm', 'b', 'r', 'q', 'k'],
+        kingRoles: ['k'],
+        promotionRoles: ['p'],
+        promotionOrder: ['m', 'q', 'r', 'b'],
+    };
+    const variant = register(meta);
+    const board = document.createElement('div');
+    board.className = 'knightmate';
+
+    boardSettings.updateScopedPieceStyle(variant, board);
+
+    expect(cataloguedCompatiblePieceFamily(meta)).toBe('knightmate');
+    expect(boardSettings.pieceCSS(variant.pieceFamily, variant)).toBe('standard');
+    expect(board.classList.contains('piece-style-knightmate-standard')).toBe(true);
+    expect(document.getElementById('piece-set-knightmate-standard')?.getAttribute('href')).toContain(
+        '/piece-css/knightmate/standard.css',
+    );
+    expect(variant.kingRoles).toEqual(['k-piece']);
+    expect(variant.pieceRow.white).toContain('m-piece');
+    expect(variant.promotion.order).toContain('m');
+    expect(VARIANTS.chess.pieceFamily).toBe('standard');
 });
 
 test('catalogued wall pieces are marked when both board and piece families are built in', () => {

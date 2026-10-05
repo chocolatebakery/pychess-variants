@@ -1,0 +1,36 @@
+.knightmate piece.p-piece.white {
+    background-image: url('../../images/pieces/merida/wP.svg');
+}
+.knightmate piece.b-piece.white {
+    background-image: url('../../images/pieces/merida/wB.svg');
+}
+.knightmate piece.m-piece.white {
+    background-image: url('../../images/pieces/merida/wK.svg');
+}
+.knightmate piece.r-piece.white {
+    background-image: url('../../images/pieces/merida/wR.svg');
+}
+.knightmate piece.q-piece.white {
+    background-image: url('../../images/pieces/merida/wQ.svg');
+}
+.knightmate piece.k-piece.white {
+    background-image: url('../../images/pieces/merida/wN.svg');
+}
+.knightmate piece.p-piece.black {
+    background-image: url('../../images/pieces/merida/bP.svg');
+}
+.knightmate piece.b-piece.black {
+    background-image: url('../../images/pieces/merida/bB.svg');
+}
+.knightmate piece.m-piece.black {
+    background-image: url('../../images/pieces/merida/bK.svg');
+}
+.knightmate piece.r-piece.black {
+    background-image: url('../../images/pieces/merida/bR.svg');
+}
+.knightmate piece.q-piece.black {
+    background-image: url('../../images/pieces/merida/bQ.svg');
+}
+.knightmate piece.k-piece.black {
+    background-image: url('../../images/pieces/merida/bN.svg');
+}
