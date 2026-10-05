@@ -458,9 +458,7 @@ async def new_game_bughouse(app_state: PychessGlobalAppState, seek_id, game_id=N
 
     await app_state.realtime_game_creation_lock.acquire()
     try:
-        conflict = realtime_game_conflict(
-            app_state, (wplayer, bplayer, bug_wplayer, bug_bplayer)
-        )
+        conflict = realtime_game_conflict(app_state, (wplayer, bplayer, bug_wplayer, bug_bplayer))
         if conflict is not None:
             return {"type": "error", "message": REALTIME_GAME_IN_PROGRESS_MESSAGE}
 

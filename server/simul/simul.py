@@ -504,9 +504,7 @@ class Simul:
                 # Recovery can encounter an opponent who started another game
                 # after accepting the simul but before the missing board was
                 # recreated. Never manufacture a second realtime game.
-                self._admission_error = (
-                    f"{player.username}: {REALTIME_GAME_IN_PROGRESS_MESSAGE}"
-                )
+                self._admission_error = f"{player.username}: {REALTIME_GAME_IN_PROGRESS_MESSAGE}"
                 continue
 
             game_id = await new_id(game_table)
@@ -581,9 +579,7 @@ class Simul:
             conflict = realtime_game_conflict(self.app_state, self.players.values())
             if conflict is not None:
                 player, _active_game = conflict
-                self._admission_error = (
-                    f"{player.username}: {REALTIME_GAME_IN_PROGRESS_MESSAGE}"
-                )
+                self._admission_error = f"{player.username}: {REALTIME_GAME_IN_PROGRESS_MESSAGE}"
                 return False
 
             self.status = T_STARTED
