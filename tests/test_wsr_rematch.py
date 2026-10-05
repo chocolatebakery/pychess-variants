@@ -216,12 +216,9 @@ customPiece1 = p:mKmDmA
                     self.assertEqual(response["type"], "new_game")
                     created = self.state.games[response["gameId"]]
                     self.assertEqual(created.variant, entry.variant)
-                    self.assertEqual(created.random_context["poolVersion"], 3)
+                    self.assertEqual(created.random_context["poolVersion"], 4)
                     self.assertIs(created.bplayer, self.opponent)
                     self.assertTrue(created.board.legal_moves())
-                    if entry.variant == "janggi":
-                        self.assertTrue(created.wsetup)
-                        self.assertTrue(created.bsetup)
                     if entry.variant == "fogofwar":
                         self.assertTrue(created.fow)
                         for color in (None, 0, 1):
@@ -238,6 +235,34 @@ customPiece1 = p:mKmDmA
                     self.assertEqual(created.level, 0)
                     self.assertEqual(created.byoyomi_period, 0)
                     await created.game_ended(self.player, "resign")
+
+    async def test_removed_dice_variants_rematch_using_the_current_pool(self):
+        random_mover = self.state.users["Random-Mover"]
+        selected = RANDOM_DICE_POOL.entries[0]
+        for variant in ("shogi", "xiangqi", "janggi"):
+            for opponent in (self.opponent, random_mover):
+                with self.subTest(variant=variant, bot=opponent.bot):
+                    current = await self.finished_game(variant, opponent)
+                    current.random_context = {
+                        "mode": "randomdice",
+                        "poolId": RANDOM_DICE_POOL.pool_id,
+                        "poolVersion": 3,
+                        "entryId": "dice-" + variant,
+                        "variant": variant,
+                    }
+
+                    with patch("random_modes.secrets.randbelow", return_value=0) as randbelow:
+                        response = await self.rematch(current, AsyncMock())
+
+                    self.assertEqual(response["type"], "new_game")
+                    randbelow.assert_called_once_with(18)
+                    rematch = self.state.games[response["gameId"]]
+                    self.assertEqual(rematch.variant, selected.variant)
+                    self.assertEqual(rematch.random_context["poolVersion"], 4)
+                    self.assertEqual(rematch.random_context["previousEntryId"], "dice-" + variant)
+                    self.assertEqual(current.variant, variant)
+                    self.assertEqual(current.random_context["poolVersion"], 3)
+                    await rematch.game_ended(self.player, "resign")
 
     async def test_dice_reports_unsupported_fog_and_unavailable_alice_without_creating_games(self):
         alice = self.state.users["Alice-Stockfish"]

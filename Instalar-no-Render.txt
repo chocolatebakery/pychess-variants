@@ -246,10 +246,10 @@ Jogar contra a AI (Wild 29 e Random Dice):
   explicitamente Random-Mover no dialogo para jogar sem worker; esse bot escolhe
   lances legais ao acaso, nao calcula como Fairy-Stockfish.
 
-  O Random Dice inclui 21 variantes, com pesos iguais:
+  O Random Dice inclui 18 variantes, com pesos iguais:
     Atomic, Orda, Losers, Three-check, King of the Hill, Chess960, Crazyhouse,
     Horde, Seirawan Chess, Capablanca Chess, Knightmate, Duck Chess, Hoppel-Poppel,
-    Atomar, Racing Kings, Fog of War, Alice Chess, Makruk, Shogi, Xiangqi e Janggi.
+    Atomar, Racing Kings, Fog of War, Alice Chess e Makruk.
   Wild 29 mantem o seu pool ICC e Atomic com xeques.
 
   O sorteio das variantes usa secrets.randbelow(), com a fonte de aleatoriedade
@@ -258,7 +258,7 @@ Jogar contra a AI (Wild 29 e Random Dice):
   ciclos de variantes nem procura equilibrar as frequencias das ultimas partidas.
 
   Atomar e distinto de Atomic: usa as regras nativas de nocheckatomic do motor.
-  Shogi usa 9x9; Xiangqi e Janggi usam 9x10; Alice usa dois planos de 8x8.
+  Alice usa dois planos de 8x8.
   O controlo de tempo escolhido no Dice mantem-se mesmo nestas variantes.
 
   Se sair Fog of War contra Fairy-Stockfish, o site mostra um aviso, pois nao
