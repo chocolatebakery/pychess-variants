@@ -68,6 +68,7 @@ from logger import DEFAULT_LOGGING_CONFIG
 from public_users import PublicUsers
 from push_notifications import PushNotifier
 from puzzle import rename_puzzle_fields
+from random_modes import is_random_mode
 from seek import Seek, should_persist_seek_on_shutdown, should_restore_persisted_seek
 from settings import (
     DEV,
@@ -350,16 +351,17 @@ class PychessGlobalAppState:
             return
 
         async for doc in self.db.seek.find():
-            try:
-                get_server_variant(doc["variant"], doc["chess960"])
-            except KeyError:
-                log.warning(
-                    "Dropping persisted seek %s for unavailable variant %s",
-                    doc.get("_id"),
-                    doc.get("variant"),
-                )
-                await self.db.seek.delete_one({"_id": doc["_id"]})
-                continue
+            if not is_random_mode(doc["variant"]):
+                try:
+                    get_server_variant(doc["variant"], doc["chess960"])
+                except KeyError:
+                    log.warning(
+                        "Dropping persisted seek %s for unavailable variant %s",
+                        doc.get("_id"),
+                        doc.get("variant"),
+                    )
+                    await self.db.seek.delete_one({"_id": doc["_id"]})
+                    continue
 
             user = await self.users.get(doc["user"])
             if user is None:
@@ -393,6 +395,7 @@ class PychessGlobalAppState:
                 challenge_decline_reason=doc.get("challengeDeclineReason"),
                 bot_challenge_status=doc.get("botChallengeStatus"),
                 bot_challenge_decline_reason=doc.get("botChallengeDeclineReason"),
+                random_context=doc.get("randomContext"),
             )
             if not should_restore_persisted_seek(seek):
                 log.debug("Skipping non-restorable seek from database: %s", seek.id)

@@ -28,6 +28,7 @@ tournament*.json
 /*.sh
 *.pgn
 *.txt
+!/Instalar-no-Render.txt
 *.mo
 .env
 yarn-error.log

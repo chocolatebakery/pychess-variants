@@ -116,6 +116,8 @@ class ServerVariants(Enum):
     _3CHECK960 = Variant("X", "3check", _("Three check 960"), "☷", chess960=True)
     ANTICHESS = Variant("’", "antichess", _("Antichess"), "🐥")
     ANTICHESS960 = Variant("’", "antichess", _("Antichess960"), "🐓", chess960=True)
+    LOSERS = Variant("losers", "losers", _("Losers Chess"), "L", rating_enabled=False)
+    GIVEAWAY = Variant("giveaway", "giveaway", _("Giveaway Chess"), "G", rating_enabled=False)
     RACINGKINGS = Variant("°", "racingkings", _("Racing Kings"), "🚗")
     RACINGKINGS960 = Variant("°", "racingkings", _("Racing Kings 1440"), "🚙", chess960=True)
     HORDE = Variant("š", "horde", _("Horde"), "🐖")
@@ -209,6 +211,8 @@ NO_VARIANTS: tuple[ServerVariants, ...] = (
     ServerVariants.SHINOBI,
     ServerVariants.MAKRUKHOUSE,
     ServerVariants.XIANGQIHOUSE,
+    ServerVariants.LOSERS,
+    ServerVariants.GIVEAWAY,
 )
 
 TWO_BOARD_VARIANTS: tuple[ServerVariants, ...] = tuple(

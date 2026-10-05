@@ -42,6 +42,13 @@ from fairy import (
 )
 from game import Game, StaleMovePersistenceError
 from newid import new_id
+from random_modes import (
+    RandomModeError,
+    is_random_mode,
+    previous_entry_id_from_context,
+    random_context_for_entry,
+    select_random_mode_entry,
+)
 from seek import (
     ANON_RESTRICTED_SEEK_MESSAGE,
     DIRECT_CHALLENGE_ACCEPTED,
@@ -351,6 +358,7 @@ async def _load_game_from_doc(
         tournamentId=doc.get("tid"),
         tournamentArrangementId=doc.get("aid"),
         simulId=doc.get("sid"),
+        random_context=doc.get("rc"),
     )
     simul_host_color = doc.get("sh")
     if game.simulId is not None:
@@ -837,19 +845,53 @@ async def join_seek(
 async def new_game(
     app_state: PychessGlobalAppState, seek: Seek, game_id: str | None = None
 ) -> NewGameMessage | ErrorMessage:
+    variant = seek.variant
+    chess960 = seek.chess960
+    fen = seek.fen
+    random_context = None
+    if is_random_mode(seek.variant):
+        previous_entry_id = previous_entry_id_from_context(seek.random_context)
+        previous_game_id = (
+            str(seek.random_context.get("previousGameId"))
+            if seek.random_context and seek.random_context.get("previousGameId")
+            else None
+        )
+        try:
+            random_entry = select_random_mode_entry(seek.variant, previous_entry_id)
+        except RandomModeError as exc:
+            log.exception("Failed to resolve random mode %s", seek.variant)
+            remove_seek(app_state.seeks, seek)
+            return {"type": "error", "message": str(exc)}
+        variant = random_entry.variant
+        chess960 = random_entry.chess960
+        fen = ""
+        random_context = random_context_for_entry(
+            seek.variant,
+            random_entry,
+            previous_entry_id=previous_entry_id,
+            previous_game_id=previous_game_id,
+        )
+        log.info(
+            "Resolved random mode %s to %s chess960=%s entry=%s",
+            seek.variant,
+            variant,
+            chess960,
+            random_entry.entry_id,
+        )
+
     fen_valid = True
-    if seek.fen:
-        fen_valid, sanitized_fen = sanitize_fen(seek.variant, seek.fen, seek.chess960)
+    if fen:
+        fen_valid, sanitized_fen = sanitize_fen(variant, fen, chess960)
         if not fen_valid:
-            message = "Failed to create game. Invalid FEN %s" % seek.fen
+            message = "Failed to create game. Invalid FEN %s" % fen
             log.debug(message)
             remove_seek(app_state.seeks, seek)
             return {"type": "error", "message": message}
     else:
         sanitized_fen = ""
 
-    if seek.fen and not get_server_variant(seek.variant, seek.chess960).two_boards:
-        board = FairyBoard(seek.variant, sanitized_fen, bool(seek.chess960))
+    if fen and not get_server_variant(variant, chess960).two_boards:
+        board = FairyBoard(variant, sanitized_fen, bool(chess960))
         if not board.has_legal_move():
             message = NO_LEGAL_MOVES_START_FEN_MESSAGE
             log.debug(message)
@@ -862,7 +904,7 @@ async def new_game(
     if TYPE_CHECKING:
         assert wplayer is not None
         assert bplayer is not None
-        assert seek.chess960 is not None
+        assert chess960 is not None
 
     if game_id is None:
         game_id = await new_id(None if app_state.db is None else app_state.db.game)
@@ -883,7 +925,7 @@ async def new_game(
                 return {"type": "error", "message": REALTIME_GAME_IN_PROGRESS_MESSAGE}
 
         # print("new_game", game_id, seek.variant, seek.fen, wplayer, bplayer, seek.base, seek.inc, seek.level, seek.rated, seek.chess960)
-        catalogued_casual = is_catalogued_variant(seek.variant)
+        catalogued_casual = is_catalogued_variant(variant)
         any_bot_player = wplayer.bot or bplayer.bot
         rated = (
             CASUAL
@@ -896,7 +938,7 @@ async def new_game(
         game = Game(
             app_state,
             game_id,
-            seek.variant,
+            variant,
             sanitized_fen,
             wplayer,
             bplayer,
@@ -905,22 +947,23 @@ async def new_game(
             byoyomi_period=seek.byoyomi_period,
             level=seek.level,
             rated=rated,
-            chess960=seek.chess960,
+            chess960=chess960,
             corr=seek.day > 0,
             create=True,
             tournamentId=seek.tournament_id,
             tournamentArrangementId=seek.rr_arrangement_id,
             new_960_fen_needed_for_rematch=seek.reused_fen,
             is_rematch=seek.is_rematch,
+            random_context=random_context,
         )
         app_state.games[game_id] = game
     except Exception:
         log.exception(
             "Creating new game %s failed! %s 960:%s FEN:%s %s vs %s",
             game_id,
-            seek.variant,
-            seek.chess960,
-            seek.fen,
+            variant,
+            chess960,
+            fen,
             wplayer,
             bplayer,
         )
@@ -993,6 +1036,8 @@ async def insert_game_to_db(game, app_state: PychessGlobalAppState):
             document["rn"] = round_no
     if game.tournamentArrangementId is not None:
         document["aid"] = game.tournamentArrangementId
+    if game.random_context is not None:
+        document["rc"] = game.random_context
     if game.simulId is not None:
         document["sid"] = game.simulId
         if game.simulHostColor not in ("w", "b"):

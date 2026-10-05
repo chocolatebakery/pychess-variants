@@ -1,0 +1,312 @@
+INSTALAR PYCHESS RANDOM NO RENDER (ONRENDER.COM)
+Guia baseado no codigo deste projeto e na documentacao consultada em 2026-10-05.
+
+LEMBRETE: TENS DE CONFIGURAR UM MONGODB ONLINE.
+O Render vai executar o site; a base de dados deve estar acessivel pela Internet.
+Podes usar MongoDB Atlas. Um MongoDB no teu PC/localhost nao serve para este deploy.
+O projeto usa MongoDB; o Render Postgres nao o substitui.
+
+
+1. PREPARAR O REPOSITORIO
+-----------------------
+Coloca o projeto e as alteracoes de Wild 29 / Random Dice num repositorio GitHub,
+GitLab ou Bitbucket que possas ligar ao Render. Confirma que estao na branch que
+vais publicar, incluindo os novos ficheiros Python.
+
+Devem estar incluidos, entre outros:
+  server/, client/, templates/, static/, lang/, docs/, variants.ini,
+  pyproject.toml, package.json, yarn.lock, .python-version, .node-version,
+  render-build.sh, cp2static.sh, md2html.sh, md2html.js e esbuild.mjs.
+
+Nao publiques passwords, tokens, chaves de sessao, .env, node_modules ou .venv.
+Os exemplos deste guia sao placeholders, nao credenciais reais.
+
+Este projeto requer Python 3.14+ e Node 24.x com Yarn 1.x.
+Os ficheiros .python-version e .node-version ja indicam 3.14 e 24.
+
+
+2. CONFIGURAR O MONGODB ONLINE (ATLAS)
+------------------------------------
+1. Cria uma conta e um projeto no MongoDB Atlas, e cria um cluster.
+   Escolhe uma regiao proxima da regiao do teu servico Render.
+   Para testes podes avaliar o plano Free; verifica os limites antes de escolher.
+
+2. Em Database Access / Database Users, cria um utilizador para a aplicacao.
+   Este utilizador e diferente da tua conta de acesso ao painel Atlas.
+   Usa uma password forte e a permissao readWrite na base "pychess-variants".
+   A aplicacao precisa de criar colecoes e indices, alem de ler/escrever dados.
+
+3. No cluster, abre Connect > Drivers e escolhe Python / PyMongo.
+   Copia a connection string mongodb+srv:// fornecida pelo Atlas.
+   Substitui os placeholders de utilizador e password pelos valores reais.
+   Mantem as opcoes de autenticacao/TLS fornecidas pelo Atlas.
+   Se a password tiver caracteres especiais, codifica-os para URL na string:
+   por exemplo, @ passa a %40. Nao mudes a password em si no Atlas.
+
+   Exemplo ilustrativo da variavel que vais usar no Render:
+   MONGO_HOST=mongodb+srv://UTILIZADOR:PASSWORD_CODIFICADA@TEU_CLUSTER.mongodb.net/?retryWrites=true&w=majority
+
+   O nome da base esta fixo em server/settings.py: pychess-variants.
+   MONGO_DB_NAME nao e lido de ENV nesta versao. A aplicacao cria as colecoes
+   e os indices no arranque; nao precisas de os criar manualmente numa base nova.
+
+4. Autoriza o acesso de rede do Render ao Atlas:
+   - Depois de criares o Web Service, abre o servico no painel Render.
+   - Em Connect > Outbound, copia TODOS os intervalos de IP apresentados.
+   - No Atlas, em Network Access / IP Access List, adiciona esses intervalos CIDR.
+   - Autorizar apenas o IP do teu PC nao autoriza o servidor Render.
+   - Se mudares de regiao ou servico, volta a verificar os intervalos.
+
+   Referencias: [A1], [A2], [A3] e [R5] na secao 10.
+
+
+3. CRIAR O SERVICO NO RENDER
+--------------------------
+No painel Render, escolhe New > Web Service e liga o teu repositorio.
+Preenche os campos:
+
+  Name:                o nome que quiseres, por exemplo pychess-random
+  Branch:              a branch com as tuas alteracoes
+  Language / Runtime:  Python 3
+  Region:              proxima do MongoDB e dos jogadores
+
+  Root Directory:
+    Se o repositorio tiver pychess-variants/ como subpasta, usa pychess-variants.
+    Se pyproject.toml e server/ estiverem ja na raiz do repositorio, deixa vazio.
+    Nao coloques aqui o caminho C:\Users\... do teu PC.
+
+  Build Command:
+    bash render-build.sh
+
+  Start Command:
+    python3 server/server.py
+
+O script de build instala as dependencias Python e JavaScript, copia os ficheiros
+WASM e compila o frontend e os documentos. Nao precisas de um segundo servico
+para o frontend: este servidor tambem fornece os ficheiros static/.
+
+O build existente usa yarn dev. Para gerar JavaScript de producao minificado,
+podes usar em alternativa este Build Command completo, numa unica linha:
+
+  pip3 install . && yarn install --frozen-lockfile --production=false && yarn prod && yarn md
+
+O --production=false instala tambem as ferramentas necessarias para o build.
+Se usares bash render-build.sh, deixa NODE_ENV por definir para nao as excluir.
+PROD=true, indicado abaixo, e a configuracao de producao da aplicacao Python.
+
+Nao acrescentes -a nem -s ao Start Command: sao opcoes de teste.
+O Dockerfile de desenvolvimento inclui -a, por isso este guia usa Python nativo.
+
+O servidor ja le PORT e o aiohttp aceita ligacoes nas interfaces de rede.
+Deixa o Render fornecer PORT; nao precisas de definir HOST ou de fixar 8080.
+
+Para Health Check Path podes usar /static/favicon/favicon.ico, que ja existe.
+Este teste confirma que o HTTP responde; nao verifica a ligacao continua ao MongoDB.
+O projeto nao tem um endpoint /health dedicado nesta versao.
+
+Comeca com uma unica instancia e um unico processo Python: os jogos, sockets e
+relogios usam estado em memoria. Mais instancias exigem adaptacao dessa arquitetura.
+
+Referencias sobre configuracao do Render: [R1], [R2], [R3] e [R6].
+
+
+4. VARIAVEIS ENV ESSENCIAIS
+--------------------------
+Configura estas variaveis em Environment no Web Service:
+
+MONGO_HOST
+  Connection string completa do teu MongoDB online, com credenciais reais.
+  Sem esta variavel, o codigo tenta ligar a mongodb://127.0.0.1:27017.
+  O nome reconhecido e MONGO_HOST, nao MONGODB_URI nem DATABASE_URL.
+
+URI
+  URL publica completa do site, com https e sem barra no fim.
+  Exemplo: https://pychess-random.onrender.com
+  Usa o endereco efetivamente atribuido pelo Render, nao apenas este exemplo.
+  Esta URL e usada em links, cookies seguros e callbacks de login.
+
+PROD
+  true
+  Escreve exatamente true em minusculas; o codigo faz essa comparacao literal.
+
+FERNET_KEY
+  Chave privada de sessao: 32 bytes aleatorios codificados em base64 URL-safe.
+  Gera-a uma vez e guarda-a nas ENV do Render. Nao uses o valor padrao do codigo.
+  Podes gerar uma chave localmente com este comando Python:
+
+  python -c "import base64, secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('ascii'))"
+
+  Cola apenas o resultado, incluindo o = final, no valor de FERNET_KEY.
+  Nao uses o gerador generico do Render sem garantir este formato.
+  Mantem a chave entre deploys; troca-la invalida as sessoes existentes.
+
+
+5. ENV RECOMENDADAS E VERSOES
+---------------------------
+ALLOWED_ORIGINS
+  Exemplo: https://pychess-random.onrender.com
+  Coloca a origem exata do teu site. Para varias origens, separa com virgulas,
+  sem espacos, barras finais ou caminhos. Usa URLs completas, nao o simbolo *.
+
+ADMINS
+  Exemplo: TeuUsername
+  Usa o username da tua conta NESTE site. Varios nomes: Nome1,Nome2.
+  Esta variavel atribui permissoes; nao cria a conta nem configura o login.
+
+STATIC_ROOT
+  /static
+  Ja e o padrao. Mantem-o para servir os assets a partir deste deploy.
+
+LEGACY_BLOG_BOOTSTRAP
+  0
+  Recomendado para este fork: evita importar posts antigos do PyChess na base nova.
+
+NODE_VERSION
+  24
+  Opcional: .node-version ja indica 24. Podes explicita-lo no Render.
+
+PYTHON_VERSION
+  3.14.3
+  Opcional: .python-version ja indica 3.14. Se definires esta ENV, o Render exige
+  uma versao completa, incluindo o patch; 3.14.3 e um exemplo suportado consultado.
+  Esta ENV tem prioridade sobre .python-version. Verifica [R2] ao atualizar.
+
+Nao precisas de ENV especiais para ativar Wild 29, Random Dice ou os seus pools:
+essas definicoes fazem parte do codigo publicado.
+
+
+6. LOGIN E INTEGRACOES OPCIONAIS
+------------------------------
+O site usa OAuth para autenticar contas. Configura pelo menos um fornecedor
+para teres contas registadas e poderes aceder com o teu utilizador administrador.
+Os valores padrao "pychess" e "secret" nao sao credenciais da tua instalacao.
+
+Cria/regista a aplicacao no fornecedor escolhido, configura as credenciais abaixo
+e autoriza este callback exato: URI + /oauth/NOME_DO_FORNECEDOR.
+Exemplo para Google: https://pychess-random.onrender.com/oauth/google
+
+Fornecedor    ENV                               Callback
+------------  --------------------------------  ------------------
+Lichess       LICHESS_CLIENT_ID                  /oauth/lichess
+Lishogi       LISHOGI_CLIENT_ID, CLIENT_SECRET   /oauth/lishogi
+Google        GOOGLE_CLIENT_ID,                 /oauth/google
+              GOOGLE_CLIENT_SECRET
+Microsoft     MICROSOFT_CLIENT_ID,              /oauth/microsoft
+              MICROSOFT_CLIENT_SECRET
+Facebook      FACEBOOK_CLIENT_ID,               /oauth/facebook
+              FACEBOOK_CLIENT_SECRET
+Discord       DISCORD_CLIENT_ID,                /oauth/discord
+              DISCORD_CLIENT_SECRET
+
+O login Lichess usa PKCE sem client secret neste codigo. Confirma com o fornecedor
+os requisitos para o teu client ID e dominio; um token pessoal nao e um client ID.
+No Lishogi, o nome da ENV do secret e literalmente CLIENT_SECRET.
+
+Outras ENV, apenas se fores usar a integracao correspondente:
+  TOURNAMENT_DIRECTORS: usernames separados por virgulas.
+  DISCORD_TOKEN: token do bot Discord; e diferente das credenciais do login Discord.
+  TWITCH_CLIENT_ID e TWITCH_CLIENT_SECRET: integracao Twitch.
+  PYCHESS_MONITOR_TOKEN e LICHESS_API_TOKEN: integracoes especificas com Lichess.
+  BOT_TOKENS e FISHNET_KEYS: objetos JSON para bots/workers; o padrao e {}.
+  PUSH_VAPID_PUBLIC_KEY, PUSH_VAPID_PRIVATE_KEY e PUSH_VAPID_SUBJECT:
+    notificacoes Web Push; configura as tres em conjunto se fores ativa-las.
+  NNUE_DOWNLOAD_ROOT: endereco de alojamento dos ficheiros NNUE, se aplicavel.
+  SOURCE_VERSION: identificador de versao para cache dos assets, se necessitares.
+
+Deixa as integracoes que nao vais usar por definir. Nao coloques valores ficticios.
+
+
+7. EXEMPLO DE CONFIGURACAO INICIAL
+--------------------------------
+Substitui os placeholders antes de introduzir estes pares no painel Render.
+No campo Value, nao acrescentes aspas exteriores aos valores.
+
+  PROD=true
+  URI=https://TEU-SERVICO.onrender.com
+  MONGO_HOST=mongodb+srv://UTILIZADOR:PASSWORD_CODIFICADA@TEU_CLUSTER.mongodb.net/?retryWrites=true&w=majority
+  FERNET_KEY=COLA_A_CHAVE_GERADA
+  ALLOWED_ORIGINS=https://TEU-SERVICO.onrender.com
+  ADMINS=TEU_USERNAME_NO_SITE
+  STATIC_ROOT=/static
+  LEGACY_BLOG_BOOTSTRAP=0
+  NODE_VERSION=24
+
+Acrescenta as credenciais OAuth do fornecedor que escolheres.
+Se adicionares PYTHON_VERSION, usa uma versao completa compativel, como 3.14.3.
+
+
+8. PUBLICAR E VERIFICAR
+----------------------
+1. Cria o servico com as ENV e autoriza os IPs de saida do Render no Atlas.
+   Se o primeiro arranque ocorrer antes dessa autorizacao, faz novo deploy depois.
+2. Confirma nos logs as versoes Python/Node e que o build terminou sem erros.
+3. Confirma que o arranque liga ao MongoDB e o Render marca o deploy como Live.
+4. Abre a URL publica e testa login, criacao de jogo e uma partida em duas janelas.
+5. Confirma Wild 29 e Random Dice, e a variante sorteada para ambos os jogadores.
+6. Verifica no Atlas os dados de contas e partidas criados pelo site.
+
+Se adicionares um dominio proprio, atualiza URI, ALLOWED_ORIGINS e os callbacks
+OAuth para a nova URL. Guarda as ENV e faz o deploy necessario para as aplicar.
+
+Para jogos em tempo real, usa um plano de instancia que permaneca ativo.
+O plano Free do Render suspende o servico apos 15 minutos sem trafego recebido,
+incluindo mensagens WebSocket. O arranque seguinte pode demorar cerca de um minuto.
+Isso e uma limitacao relevante para disponibilidade e partidas; ve [R4].
+
+Os ficheiros escritos no disco local do Render nao sao armazenamento duradouro.
+As contas e partidas ficam no MongoDB externo; planeia backups dessa base.
+O Atlas Free tem limites de capacidade e nao inclui backups automaticos: ve [A4].
+
+
+9. PROBLEMAS MAIS COMUNS
+-----------------------
+MongoDB: timeout / connection refused / ServerSelectionTimeoutError
+  Verifica MONGO_HOST, o estado do cluster e os intervalos de IP autorizados.
+  Se aparecer 127.0.0.1:27017, a ENV nao foi definida corretamente.
+
+MongoDB: authentication failed / not authorized
+  Verifica o utilizador da BASE, a password codificada na URL, as opcoes do Atlas
+  e a permissao readWrite na base pychess-variants.
+
+Build: requer Python >=3.14 ou Node 24 / esbuild nao encontrado
+  Verifica Root Directory, .python-version, .node-version e as ENV de versao.
+  Confirma que o Yarn instala as devDependencies necessarias para compilar.
+
+Build: script nao encontrado / Permission denied / erros com \r
+  Verifica Root Directory e os scripts .sh. O Render executa Linux: os scripts
+  precisam de finais de linha LF e os que sao chamados diretamente precisam
+  da permissao executavel no Git. Usa bash render-build.sh no Build Command.
+
+FERNET_KEY: erro base64 ou tamanho de chave invalido
+  Volta a gerar com o comando da secao 4 e cola o resultado completo.
+
+Pagina sem interface/tabuleiro ou ficheiros WASM em falta
+  Verifica o sucesso de yarn install, cp2static.sh e yarn dev/prod nos logs.
+  Mantem STATIC_ROOT=/static e confirma que publicaste static/ e templates/.
+
+Login: redirect_uri invalido ou regresso ao endereco errado
+  Verifica URI sem barra final, credenciais e o callback /oauth/fornecedor.
+
+Aviso "DISCORD_TOKEN is missing/empty; Discord bot disabled"
+  E esperado quando nao configuraste o bot Discord; nao bloqueia o site.
+
+Nao alteres configuracoes de ratings ou regras para resolver erros de deploy.
+Nesta implementacao os modos aleatorios ainda sao casual; ratings separados
+para Wild 29 / Random Dice requerem trabalho no codigo, nao uma ENV do Render.
+
+
+10. REFERENCIAS OFICIAIS
+-----------------------
+[R1] Web Services: https://render.com/docs/web-services
+[R2] Python: https://render.com/docs/python-version
+[R3] Node: https://render.com/docs/node-version
+[R4] Plano Free: https://render.com/docs/free
+[R5] IPs de saida: https://render.com/docs/outbound-ip-addresses
+[R6] Health checks: https://render.com/docs/health-checks
+[R7] Ferramentas do runtime: https://render.com/docs/native-runtimes
+[A1] Ligacao Atlas: https://www.mongodb.com/docs/atlas/driver-connection/
+[A2] Utilizadores: https://www.mongodb.com/docs/atlas/security-add-mongodb-users/
+[A3] Acesso de rede: https://www.mongodb.com/docs/atlas/security/ip-access-list/
+[A4] Limites Atlas Free: https://www.mongodb.com/docs/atlas/reference/free-shared-limitations/
+
+Este guia nao cria contas, cluster, servico ou credenciais e nao executa o deploy.

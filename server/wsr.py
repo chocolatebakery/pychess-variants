@@ -38,6 +38,7 @@ from fishnet import (
 )
 from link_filter import sanitize_user_message
 from newid import new_id
+from random_modes import rematch_context_for_game
 
 if TYPE_CHECKING:
     from bug.game_bug import GameBug
@@ -785,15 +786,23 @@ async def handle_rematch(
         )
         opp_player = app_state.users[opp_name]
         handicap = data["handicap"]
-        fen = "" if game.variant == "janggi" else game.initial_fen
-
-        chess960 = game.chess960
-        if TYPE_CHECKING:
-            assert chess960 is not None
-        reused_fen = True
-        if (chess960 or game.random_only) and game.new_960_fen_needed_for_rematch:
-            fen = FairyBoard.start_fen(game.variant, chess960, disabled_fen=game.initial_fen)
+        random_rematch_context = rematch_context_for_game(game.random_context, game.id)
+        if random_rematch_context is not None:
+            rematch_variant = str(random_rematch_context["mode"])
+            fen = ""
+            chess960 = False
             reused_fen = False
+        else:
+            rematch_variant = game.variant
+            fen = "" if game.variant == "janggi" else game.initial_fen
+
+            chess960 = game.chess960
+            if TYPE_CHECKING:
+                assert chess960 is not None
+            reused_fen = True
+            if (chess960 or game.random_only) and game.new_960_fen_needed_for_rematch:
+                fen = FairyBoard.start_fen(game.variant, chess960, disabled_fen=game.initial_fen)
+                reused_fen = False
 
         if opp_player.bot:
             engine = opp_player
@@ -817,7 +826,7 @@ async def handle_rematch(
             seek = Seek(
                 seek_id,
                 user,
-                game.variant,
+                rematch_variant,
                 fen=fen,
                 color=color,
                 base=game.base,
@@ -830,6 +839,7 @@ async def handle_rematch(
                 chess960=chess960,
                 reused_fen=reused_fen,
                 is_rematch=True,
+                random_context=random_rematch_context,
             )
             app_state.seeks[seek.id] = seek
 
@@ -854,7 +864,7 @@ async def handle_rematch(
                 seek = Seek(
                     seek_id,
                     user,
-                    game.variant,
+                    rematch_variant,
                     fen=fen,
                     color=color,
                     base=game.base,
@@ -867,6 +877,7 @@ async def handle_rematch(
                     chess960=chess960,
                     reused_fen=reused_fen,
                     is_rematch=True,
+                    random_context=random_rematch_context,
                 )
                 app_state.seeks[seek.id] = seek
 

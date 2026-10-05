@@ -119,25 +119,32 @@ test('anon usernames are masked in game info', () => {
     expect(text).not.toContain(anonName);
 });
 
-test('two-board variants are disabled for targeted game creation', async () => {
+test('only random modes are enabled for create and invite flows', async () => {
     expect(disabledVariantsForCreateMode('createGame', 'Invite-friend', false)).toContain('bughouse');
     expect(disabledVariantsForCreateMode('createGame', 'berado88', false)).toContain('bughouse');
-    expect(disabledVariantsForCreateMode('createGame', '', false)).not.toContain('bughouse');
+    expect(disabledVariantsForCreateMode('createGame', '', false)).toContain('bughouse');
+    expect(disabledVariantsForCreateMode('createGame', '', false)).not.toContain('wild29');
+    expect(disabledVariantsForCreateMode('createGame', '', false)).not.toContain('randomdice');
+    expect(disabledVariantsForCreateMode('playFriend', '', false)).toContain('chess');
+    expect(disabledVariantsForCreateMode('playFriend', '', false)).not.toContain('wild29');
 });
 
-test('play with AI only statically disables variants without a supported server engine path', async () => {
+test('play with AI is disabled for the random-only lobby', async () => {
     const disabled = disabledVariantsForCreateMode('playAI', '', false);
-    expect(disabled).not.toContain('alice');
+    expect(disabled).toContain('alice');
+    expect(disabled).toContain('wild29');
+    expect(disabled).toContain('randomdice');
     expect(disabled).toContain('fogofwar');
     expect(disabled).toContain('jieqi');
 });
 
-test('external bot capabilities distinguish normal and 960 variants', async () => {
+test('external bot challenges are disabled for the random-only lobby', async () => {
     const supported = new Set(['alice', 'crazyhouse960']);
     const disabled = disabledVariantsForCreateMode('playBOT', 'Alice-Stockfish', false, supported);
 
-    expect(disabled).not.toContain('alice');
-    expect(disabled).not.toContain('crazyhouse');
+    expect(disabled).toContain('alice');
+    expect(disabled).toContain('crazyhouse');
+    expect(disabled).toContain('wild29');
     expect(disabled).toContain('chess');
     expect(disabled).toContain('atomic');
     expect(disabled).toContain('bughouse');

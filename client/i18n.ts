@@ -64,6 +64,7 @@ export const translatedGameCategory = _('Game Category');
 
 export const GAME_CATEGORY_LABELS: { [key: string]: string } = {
     all: _('All'),
+    random: _('Random Modes'),
     chess: _('Chess Variants'),
     makruk: _('Makruk Variants'),
     shogi: _('Shogi Variants'),

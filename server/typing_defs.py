@@ -228,6 +228,7 @@ GameDocument = TypedDict(
         "ws": NotRequired[bool],
         "bs": NotRequired[bool],
         "fx": NotRequired[int],
+        "rc": NotRequired[dict[str, object]],
     },
 )
 

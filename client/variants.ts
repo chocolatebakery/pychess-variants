@@ -862,6 +862,30 @@ export const VARIANTS: Record<string, Variant> = {
             },
         },
     }),
+    wild29: variant({
+        name: 'wild29',
+        displayName: 'Wild 29',
+        tooltip: 'Randomly selects one supported ICC Wild 29 variant when the game starts.',
+        startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        icon: 'W',
+        boardFamily: 'standard8x8',
+        pieceFamily: 'standard',
+        pieceRow: ['k', 'q', 'r', 'b', 'n', 'p'],
+        ratingEnabled: false,
+        rules: { enPassant: true },
+    }),
+    randomdice: variant({
+        name: 'randomdice',
+        displayName: 'Random Dice',
+        tooltip: 'Randomly selects one Random Dice variant when the game starts.',
+        startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        icon: 'D',
+        boardFamily: 'standard8x8',
+        pieceFamily: 'standard',
+        pieceRow: ['k', 'q', 'r', 'b', 'n', 'p'],
+        ratingEnabled: false,
+        rules: { enPassant: true },
+    }),
     bughouse: variant({
         name: 'bughouse',
         tooltip: 'bughousebughousebughousebughouse.',
@@ -998,6 +1022,30 @@ export const VARIANTS: Record<string, Variant> = {
         boardFamily: 'standard8x8',
         pieceFamily: 'standard',
         pieceRow: ['k', 'q', 'r', 'b', 'n', 'p'],
+        rules: { enPassant: true },
+    }),
+    losers: variant({
+        name: 'losers',
+        displayName: 'losers chess',
+        tooltip: 'Lose all your pieces, or become unable to move, to win.',
+        startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        icon: 'L',
+        boardFamily: 'standard8x8',
+        pieceFamily: 'standard',
+        pieceRow: ['k', 'q', 'r', 'b', 'n', 'p'],
+        ratingEnabled: false,
+        rules: { enPassant: true },
+    }),
+    giveaway: variant({
+        name: 'giveaway',
+        displayName: 'giveaway chess',
+        tooltip: 'Give away your pieces under giveaway rules.',
+        startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        icon: 'G',
+        boardFamily: 'standard8x8',
+        pieceFamily: 'standard',
+        pieceRow: ['k', 'q', 'r', 'b', 'n', 'p'],
+        ratingEnabled: false,
         rules: { enPassant: true },
     }),
 
@@ -2026,20 +2074,32 @@ export const VARIANTS: Record<string, Variant> = {
 
 export const variants = Object.keys(VARIANTS);
 const BUILTIN_VARIANT_NAMES = new Set(Object.keys(VARIANTS));
+export const randomModeVariants = ['wild29', 'randomdice'] as const;
+const RANDOM_MODE_VARIANT_NAMES = new Set<string>(randomModeVariants);
+const RANDOM_MODE_RESULT_VARIANT_KEYS = new Set<string>([
+    'chess',
+    'chess960',
+    'crazyhouse',
+    'atomic',
+    '3check',
+    'kingofthehill',
+    'orda',
+    'losers',
+    'giveaway',
+]);
 
 export function isBuiltinVariantName(name: string | undefined | null): boolean {
     return !!name && BUILTIN_VARIANT_NAMES.has(name);
 }
-const disabledVariants = [
-    'gothic',
-    'gothhouse',
-    'embassy',
-    'embassyhouse',
-    'gorogoro',
-    'shinobi',
-    'makrukhouse',
-    'xiangqihouse',
-];
+export function isRandomModeVariant(name: string | undefined | null): boolean {
+    return !!name && RANDOM_MODE_VARIANT_NAMES.has(name);
+}
+
+export function isRandomModeOrResultVariant(name: string | undefined | null): boolean {
+    return !!name && (RANDOM_MODE_VARIANT_NAMES.has(name) || RANDOM_MODE_RESULT_VARIANT_KEYS.has(name));
+}
+
+const disabledVariants = variants.filter(v => !isRandomModeVariant(v));
 export const enabledVariants = variants.filter(v => !disabledVariants.includes(v));
 
 // variants having 0 puzzle so far
@@ -2872,27 +2932,16 @@ export function disabledVariantsForCreateMode(
     anon: boolean,
     botSupportedVariants: ReadonlySet<string> | null = null,
 ): string[] {
-    // Two-board variants are only supported by the dedicated multi-seat lobby flow.
-    // Hide them whenever the dialog is being used for invites, profile challenges,
-    // bot/AI games, or hosting, where the generic single-board flow is used.
-    if (createMode === 'playAI') return [...new Set([...twoBoarsVariants, ...unsupportedAiVariants])];
-    if (createMode === 'playBOT') {
-        const disabled = new Set(twoBoarsVariants);
-        if (botSupportedVariants !== null) {
-            Object.values(VARIANTS).forEach(variant => {
-                const supportsNormal = botSupportedVariants.has(variant.name);
-                const supports960 = variant.chess960 && botSupportedVariants.has(`${variant.name}960`);
-                if (!supportsNormal && !supports960) disabled.add(variant.name);
-            });
-        }
-        return [...disabled];
-    }
-    if (createMode === 'createHost') return twoBoarsVariants;
-    if (createMode !== 'createGame') return twoBoarsVariants;
-    return anon || profileid !== '' ? twoBoarsVariants : [];
+    void profileid;
+    void anon;
+    void botSupportedVariants;
+    const nonRandomModes = variants.filter(v => !isRandomModeVariant(v));
+    if (createMode === 'createGame' || createMode === 'playFriend') return nonRandomModes;
+    return variants;
 }
 
 export const variantGroups: { [key: string]: { variants: string[] } } = {
+    random: { variants: ['wild29', 'randomdice'] },
     chess: {
         variants: [
             'chess',

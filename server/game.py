@@ -166,6 +166,7 @@ class Game:
         initial_clocks: tuple[int | float, int | float] | None = None,
         new_960_fen_needed_for_rematch: bool = False,
         is_rematch: bool = False,
+        random_context: Mapping[str, object] | None = None,
     ) -> None:
         self.app_state: PychessGlobalAppState = app_state
 
@@ -225,6 +226,9 @@ class Game:
         self.simulId: str | None = simulId
         self.simulHostColor: str | None = None
         self.chess960: bool | None = chess960
+        self.random_context: dict[str, object] | None = (
+            dict(random_context) if random_context is not None else None
+        )
         self.corr: bool = corr
         self.create: bool = create
         self.new_960_fen_needed_for_rematch: bool = new_960_fen_needed_for_rematch

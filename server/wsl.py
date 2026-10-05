@@ -62,6 +62,7 @@ from bug.utils_bug import handle_accept_seek_bughouse, handle_leave_seek_bughous
 from catalogued_variants import can_create_catalogued_seek, catalogued_variant_games_are_persisted
 from lobby_spotlights import lobby_spotlights
 from pychess_global_app_state_utils import get_app_state
+from random_modes import is_random_mode
 from seek import (
     ACTIVE_DIRECT_CHALLENGE_STATUSES,
     ANON_RESTRICTED_SEEK_MESSAGE,
@@ -127,10 +128,11 @@ async def _reject_inaccessible_catalogued_variant(
 def get_create_seek_error_message(user: User, data: SeekCreateData) -> str:
     day = data.get("day", 0)
     chess960 = False if is_catalogued_variant(data["variant"]) else data.get("chess960")
-    try:
-        get_server_variant(data["variant"], chess960)
-    except KeyError:
-        return "This variant is not available."
+    if not is_random_mode(data["variant"]):
+        try:
+            get_server_variant(data["variant"], chess960)
+        except KeyError:
+            return "This variant is not available."
     if is_anon_restricted_seek(user, data["variant"], chess960, day):
         return ANON_RESTRICTED_SEEK_MESSAGE
     if (
@@ -234,6 +236,8 @@ async def finally_logic(
 
             if (not user.anon) and len(user.lobby_sockets) == 0:
                 for seek in tuple(app_state.seeks.values()):
+                    if is_random_mode(seek.variant):
+                        continue
                     try:
                         server_variant = get_server_variant(seek.variant, seek.chess960)
                     except KeyError:
@@ -309,6 +313,10 @@ async def handle_create_ai_challenge(
             return
 
     variant = data["variant"]
+    if is_random_mode(variant):
+        await ws_send_json(ws, {"type": "error", "message": BOT_UNSUPPORTED_VARIANT_MESSAGE})
+        return
+
     profileid = data["profileid"]
     engine = app_state.users[profileid]
     force_random_mover = (
@@ -404,6 +412,7 @@ async def handle_create_seek(
         and not seek_value.fen
         and not user.anon
         and not is_catalogued_variant(seek_value.variant)
+        and not is_random_mode(seek_value.variant)
     ):
         variant_tc = (
             seek_value.variant,
@@ -488,6 +497,9 @@ async def handle_create_bot_challenge(
         return
 
     if await _reject_inaccessible_catalogued_variant(app_state, ws, user, data["variant"]):
+        return
+    if is_random_mode(data["variant"]):
+        await ws_send_json(ws, {"type": "error", "message": BOT_UNSUPPORTED_VARIANT_MESSAGE})
         return
 
     profileid = data["profileid"]
@@ -629,6 +641,8 @@ async def handle_leave_seek(
 
     seek = app_state.seeks[data["seekID"]]
 
+    if is_random_mode(seek.variant):
+        return
     server_variant = get_server_variant(seek.variant, seek.chess960)
     if server_variant.two_boards:
         await handle_leave_seek_bughouse(app_state, user, seek)
@@ -656,8 +670,10 @@ async def handle_accept_seek(
             return
 
     # print("accept_seek", seek.seek_json)
-    server_variant = get_server_variant(seek.variant, seek.chess960)
-    if server_variant.two_boards:
+    server_variant = None if is_random_mode(seek.variant) else get_server_variant(
+        seek.variant, seek.chess960
+    )
+    if server_variant is not None and server_variant.two_boards:
         await handle_accept_seek_bughouse(app_state, user, data, seek)
     else:
         response = await join_seek(app_state, user, seek)
@@ -795,7 +811,10 @@ async def handle_create_auto_pairing(
     if no:
         return
 
-    if any(is_catalogued_variant(variant) for variant, _chess960 in data["variants"]):
+    if any(
+        is_catalogued_variant(variant) or is_random_mode(variant)
+        for variant, _chess960 in data["variants"]
+    ):
         await ws_send_json(ws, {"type": "error", "message": CATALOGUED_CASUAL_ONLY_MESSAGE})
         return
 

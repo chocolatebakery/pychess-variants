@@ -16,6 +16,8 @@ import {
     disabledVariantsForCreateMode,
     enabledVariants,
     isCataloguedVariant,
+    isRandomModeOrResultVariant,
+    isRandomModeVariant,
     unsupportedAiVariants,
     VARIANTS,
     selectVariant,
@@ -27,7 +29,6 @@ import {
 import { timeControlStr, changeTabs, setAriaTabClick } from './view';
 import { notify } from './notification';
 import { PyChessModel } from './types';
-import { model } from './main';
 import { MsgBoard } from './messages';
 import { variantPanels } from './lobby/layer1';
 import { shouldShowRatingRange } from './lobby/ratingRange';
@@ -285,10 +286,7 @@ export class LobbyController {
             this.setFen();
         }
 
-        if (!this.anon) {
-            this.renderAutoPairingTable();
-            this.autoPairingActions = document.querySelector('div.auto-pairing-actions') as HTMLElement | null;
-        }
+        this.autoPairingActions = null;
 
         boardSettings.assetURL = this.assetURL;
     }
@@ -477,6 +475,7 @@ export class LobbyController {
         e = document.getElementById('variant') as HTMLSelectElement;
         const variant = VARIANTS[e.options[e.selectedIndex].value];
         const catalogued = isCataloguedVariant(variant.name);
+        const randomMode = isRandomModeVariant(variant.name);
         localStorage.seek_variant = variant.name;
 
         // TODO Standardize seek color
@@ -486,6 +485,7 @@ export class LobbyController {
 
         e = document.getElementById('fen') as HTMLInputElement;
         let fen = e.value;
+        if (randomMode) fen = '';
         // Prevent to create 'custom' games with standard startFen
         if (!['ataxx', 'paradigm'].includes(variant.name) && fen.trim() === variant.startFen) fen = '';
 
@@ -520,7 +520,8 @@ export class LobbyController {
             !canRateStart(variant, fen) ||
             (minutes < 1 && increment === 0) ||
             (minutes === 0 && increment === 1) ||
-            catalogued
+            catalogued ||
+            randomMode
         )
             rated = false;
         else rated = e.value === '1';
@@ -535,7 +536,8 @@ export class LobbyController {
         localStorage.seek_rating_max = e.value;
 
         e = document.getElementById('chess960') as HTMLInputElement;
-        const chess960 = fen.trim() === '' && (catalogued ? variant.randomStart : variant.chess960 && e.checked);
+        const chess960 =
+            !randomMode && fen.trim() === '' && (catalogued ? variant.randomStart : variant.chess960 && e.checked);
         localStorage.seek_chess960 = e.checked;
 
         // console.log("CREATE SEEK variant, color, fen, minutes, increment, hide, chess960", variant, color, fen, minutes, increment, chess960, rated, rrMin, rrMax);
@@ -648,21 +650,12 @@ export class LobbyController {
         return [
             h('button.lobby-button', { on: { click: () => this.createGame() } }, createModeStr('createGame')),
             h('button.lobby-button', { on: { click: () => this.playFriend() } }, createModeStr('playFriend')),
-            h('button.lobby-button', { on: { click: () => this.playAI() } }, createModeStr('playAI')),
-            h(
-                'button.lobby-button',
-                {
-                    on: { click: () => this.createHost() },
-                    style: { display: this.tournamentDirector ? 'block' : 'none' },
-                },
-                createModeStr('createHost'),
-            ),
         ];
     }
 
     renderSeekDialog() {
-        let vVariant = localStorage.seek_variant || 'chess';
-        if (!VARIANTS[vVariant]) vVariant = 'chess';
+        let vVariant = localStorage.seek_variant || 'wild29';
+        if (!VARIANTS[vVariant] || !isRandomModeVariant(vVariant)) vVariant = 'wild29';
         const disabledVariants = this.disabledVariants();
         const twoBoards = VARIANTS[vVariant].twoBoards;
         const catalogued = isCataloguedVariant(vVariant);
@@ -698,7 +691,7 @@ export class LobbyController {
                                 () => this.setVariant(),
                                 () => this.setVariant(),
                                 disabledVariants,
-                                model.gameCategory,
+                                'random',
                             ),
                         ]),
                         h('input#fen', {
@@ -1031,7 +1024,7 @@ export class LobbyController {
 
     renderVariantsDropDown(variantName: string = '', disabled: string[]) {
         // variantName and chess960 are set when this was called from the variant catalog (layer3.ts)
-        let vVariant = variantName || localStorage.seek_variant || 'chess';
+        let vVariant = variantName || localStorage.seek_variant || 'wild29';
         if (!VARIANTS[vVariant] || disabled.includes(vVariant)) vVariant = '';
         const vChess960 = localStorage.seek_chess960 === 'true' || false;
         const e = document.getElementById('variant');
@@ -1044,14 +1037,14 @@ export class LobbyController {
                 () => this.setVariant(),
                 () => this.setVariant(),
                 disabled,
-                model.gameCategory,
+                'random',
             ),
         );
         this.preSelectVariant(vVariant, vChess960);
     }
 
     createGame(variantName: string = '') {
-        const selectedVariant = variantName || localStorage.seek_variant || 'chess';
+        const selectedVariant = variantName || localStorage.seek_variant || 'wild29';
         this.createMode = 'createGame';
         this.renderVariantsDropDown(variantName, this.disabledVariants());
         this.renderDialogHeader(createModeStr(this.createMode));
@@ -1113,11 +1106,12 @@ export class LobbyController {
 
     private updateRatingRangeVisibility(variantName?: string) {
         const selectedVariant = variantName ?? (document.getElementById('variant') as HTMLSelectElement | null)?.value;
+        const ratingEligible = !!selectedVariant && VARIANTS[selectedVariant]?.ratingEnabled !== false;
         const visible = shouldShowRatingRange(
             this.createMode,
             this.profileid !== '',
             isCataloguedVariant(selectedVariant),
-        );
+        ) && ratingEligible;
         document.getElementById('rating-range-setting')!.style.display = visible ? 'block' : 'none';
     }
 
@@ -1129,6 +1123,7 @@ export class LobbyController {
         if (!variant) return;
         const byoyomi = variant.rules.defaultTimeControl === 'byoyomi';
         const catalogued = isCataloguedVariant(variant.name);
+        const randomMode = isRandomModeVariant(variant.name);
         this.updateRatingRangeVisibility(variant.name);
         if (variant.twoBoards) {
             const select = document.getElementById('tc') as HTMLSelectElement;
@@ -1158,6 +1153,7 @@ export class LobbyController {
         document.getElementById('corr')!.style.display = this.tcMode === 'corr' ? 'block' : 'none';
         e = document.getElementById('fen') as HTMLInputElement;
         e.value = '';
+        e.disabled = randomMode;
         this.updateRatedAvailability(variant, e.value);
         e = document.getElementById('incrementlabel') as HTMLSelectElement;
         patch(
@@ -1642,6 +1638,7 @@ export class LobbyController {
         const eRange = document.querySelector('div.auto-rating-range') as Element;
         const eTimeControls = document.querySelector('div.timecontrols') as Element;
         const eVariants = document.querySelector('div.variants') as Element;
+        if (!eRange || !eTimeControls || !eVariants) return;
         if (autoPairingIsOn) {
             if (this.autoPairingActions) {
                 this.autoPairingActions = patch(
@@ -1683,6 +1680,7 @@ export class LobbyController {
     renderAutoPairingTable() {
         const variantList: VNode[] = [];
         enabledVariants.forEach(v => {
+            if (isRandomModeVariant(v)) return;
             if (!this.isVariantAllowed(v)) return;
             if (devVariants.includes(v) || isCataloguedVariant(v)) return;
             const variant = VARIANTS[v];
@@ -1757,6 +1755,7 @@ export class LobbyController {
     }
 
     private isVariantAllowed(variant: string): boolean {
+        if (isRandomModeOrResultVariant(variant)) return true;
         return this.allowedVariants ? this.allowedVariants.has(variant) : true;
     }
 
@@ -2110,24 +2109,6 @@ export function lobbyView(model: PyChessModel): VNode[] {
             ),
         );
     }
-    if (!anonUser) {
-        tabs.push(
-            h(
-                'span',
-                {
-                    attrs: {
-                        role: 'tab',
-                        'aria-selected': false,
-                        'aria-controls': 'panel-4',
-                        id: 'tab-4',
-                        tabindex: '-1',
-                    },
-                },
-                _('Auto pairing'),
-            ),
-        );
-    }
-
     let containers = [];
     containers.push(h('div', { attrs: { role: 'tablist', 'aria-label': 'Seek Tabs' } }, tabs));
     containers.push(
@@ -2163,27 +2144,6 @@ export function lobbyView(model: PyChessModel): VNode[] {
                                 'games-grid#games',
                                 corrGames.map((game: Game) => gameViewPlaying(cgMap, game, username)),
                             ),
-                        ]),
-                    ]),
-                ],
-            ),
-        );
-    }
-
-    if (!anonUser) {
-        containers.push(
-            h(
-                'div.auto-container',
-                { attrs: { id: 'panel-4', role: 'tabpanel', tabindex: '-1', 'aria-labelledby': 'tab-4' } },
-                [
-                    h('div.seeks-table', [
-                        h('div.seeks-wrapper', [
-                            h('div.auto-pairing', [
-                                h('div.auto-pairing-actions'),
-                                h('div.auto-rating-range'),
-                                h('div.timecontrols'),
-                                h('div.variants'),
-                            ]),
                         ]),
                     ]),
                 ],

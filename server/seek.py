@@ -13,6 +13,12 @@ from const import CORR_SEEK_EXPIRE_WEEKS, INVITE_SEEK_EXPIRE, SYSTEM_USER
 from json_utils import json_dumps
 from misc import time_control_str
 from newid import new_id
+from random_modes import (
+    RandomContext,
+    is_random_mode,
+    random_mode_display_name,
+    random_mode_seek_context,
+)
 from rated_start import can_rate_start
 from variants import catalogued_variant_random_start, get_server_variant, is_catalogued_variant
 
@@ -89,6 +95,7 @@ class SeekJson(TypedDict):
     challengeDeclineReason: NotRequired[str]
     botChallengeStatus: NotRequired[str]
     botChallengeDeclineReason: NotRequired[str]
+    randomContext: NotRequired[RandomContext]
 
 
 class SeekDbJson(TypedDict):
@@ -122,6 +129,7 @@ class SeekDbJson(TypedDict):
     challengeDeclineReason: NotRequired[str]
     botChallengeStatus: NotRequired[str]
     botChallengeDeclineReason: NotRequired[str]
+    randomContext: NotRequired[RandomContext]
 
 
 class SeekCreateData(TypedDict):
@@ -174,13 +182,23 @@ class Seek:
         bot_challenge_decline_reason: str | None = None,
         reused_fen: bool = False,
         is_rematch: bool = False,
+        random_context: RandomContext | dict[str, object] | None = None,
     ) -> None:
         self.id: str = seek_id
         self.creator: User = creator
         self.variant: str = variant
         self.color: str = color
         self.fen: str = "" if fen is None else fen
-        if is_catalogued_variant(variant):
+        if random_context is None and is_random_mode(variant):
+            random_context = random_mode_seek_context(variant)
+        self.random_context: RandomContext | None = (
+            RandomContext(**random_context) if random_context is not None else None
+        )
+        if is_random_mode(variant):
+            rated = False
+            chess960 = False
+            self.fen = ""
+        elif is_catalogued_variant(variant):
             rated = False
             chess960 = catalogued_variant_random_start(variant) and (not self.fen or bool(chess960))
         elif rated and not can_rate_start(
@@ -197,8 +215,8 @@ class Seek:
         self.base: int | float = base
         self.inc: int = inc
         self.byoyomi_period: int = byoyomi_period
-        server_variant = get_server_variant(variant, chess960)
-        self.day: int | float = 0 if server_variant.two_boards else day
+        server_variant = None if is_random_mode(variant) else get_server_variant(variant, chess960)
+        self.day: int | float = 0 if server_variant is not None and server_variant.two_boards else day
         self.level: int = 0 if creator.username == "Random-Mover" else level
         self.chess960: bool | None = chess960
         self.target: str = target if target is not None else ""
@@ -351,6 +369,8 @@ class Seek:
             seek_json["botChallengeStatus"] = self.bot_challenge_status
         if self.bot_challenge_decline_reason:
             seek_json["botChallengeDeclineReason"] = self.bot_challenge_decline_reason
+        if self.random_context is not None:
+            seek_json["randomContext"] = self.random_context
         return seek_json
 
     @property
@@ -394,6 +414,8 @@ class Seek:
             seek_json["botChallengeStatus"] = self.bot_challenge_status
         if self.bot_challenge_decline_reason:
             seek_json["botChallengeDeclineReason"] = self.bot_challenge_decline_reason
+        if self.random_context is not None:
+            seek_json["randomContext"] = self.random_context
         return seek_json
 
     @property
@@ -429,6 +451,12 @@ class Seek:
     @property
     def discord_msg(self) -> str:
         tc = time_control_str(self.base, self.inc, self.byoyomi_period, self.day)
+        if is_random_mode(self.variant):
+            return "%s: **%s** %s" % (
+                self.creator.username,
+                random_mode_display_name(self.variant),
+                tc,
+            )
         tail960 = "960" if self.chess960 and not is_catalogued_variant(self.variant) else ""
         return "%s: **%s%s** %s" % (self.creator.username, self.variant, tail960, tc)
 
@@ -464,6 +492,8 @@ def resolve_decline_reason(reason: str | None, *, allow_custom: bool = False) ->
 def is_anon_restricted_seek(
     user: User, variant: str, chess960: bool | None, day: float = 0
 ) -> bool:
+    if is_random_mode(variant):
+        return user.anon and day > 0
     server_variant = get_server_variant(variant, chess960)
     return user.anon and (day > 0 or server_variant.two_boards)
 
@@ -476,6 +506,8 @@ def is_targeted_two_board_seek(variant: str, chess960: bool | None, target: str 
     # Two-board variants need the dedicated 4-seat bughouse flow.
     # Generic invites and direct challenges only model one or two seats,
     # so allowing them here can create malformed games.
+    if is_random_mode(variant):
+        return False
     server_variant = get_server_variant(variant, chess960)
     return server_variant.two_boards and (
         (target or "") == "Invite-friend" or is_direct_challenge_target(target)
@@ -567,7 +599,12 @@ async def create_seek(
     Currently there is no limit for them since they're used for tournament organisation purposes
     They can only be created by trusted users
     """
-    if is_catalogued_variant(data["variant"]):
+    if is_random_mode(data["variant"]):
+        data = dict(data)  # type: ignore[assignment]
+        data["rated"] = False
+        data["chess960"] = False
+        data["fen"] = ""
+    elif is_catalogued_variant(data["variant"]):
         data = dict(data)  # type: ignore[assignment]
         data["rated"] = False
         data["chess960"] = catalogued_variant_random_start(data["variant"]) and (
@@ -575,14 +612,15 @@ async def create_seek(
         )
     day = data.get("day", 0)
     chess960: bool | None = data.get("chess960")
-    try:
-        get_server_variant(data["variant"], chess960)
-    except KeyError:
-        log.info(
-            "Rejecting seek creation for unavailable variant %s",
-            data["variant"],
-        )
-        return None
+    if not is_random_mode(data["variant"]):
+        try:
+            get_server_variant(data["variant"], chess960)
+        except KeyError:
+            log.info(
+                "Rejecting seek creation for unavailable variant %s",
+                data["variant"],
+            )
+            return None
     if is_anon_restricted_seek(user, data["variant"], chess960, day):
         log.info(
             "Rejecting restricted seek creation by anon user %s (variant=%s day=%s)",
