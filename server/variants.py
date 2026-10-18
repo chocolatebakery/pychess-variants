@@ -7,10 +7,14 @@ from compress import (
     decode_move_duck,
     decode_move_extended,
     decode_move_flipping,
+    decode_move_monster,
+    decode_move_spell,
     decode_move_standard,
     encode_move_duck,
     encode_move_extended,
     encode_move_flipping,
+    encode_move_monster,
+    encode_move_spell,
     encode_move_standard,
 )
 from settings import PROD
@@ -18,6 +22,22 @@ from settings import PROD
 MoveCodec = Callable[[str], str]
 HiddenInfoMode = Literal["none", "fog", "covered_pieces"]
 CATALOGUED_VARIANT_ICON = "☐"
+# Private-use keys rendered with SVG masks in random-icons.css.
+SVG_VARIANT_ICONS: dict[str, str] = {
+    "knightmate": "\ue910",
+    "atomar": "\ue911",
+    "berolina": "\ue912",
+    "extinction": "\ue913",
+    "kinglet": "\ue914",
+    "threekings": "\ue915",
+    "torpedo": "\ue916",
+    "losers": "\ue917",
+    "rifle-chess": "\ue918",
+    "spell-chess": "\ue919",
+    "brotherhood": "\ue91a",
+    "randomdice": "\ue91b",
+    "monster": "\ue91c",
+}
 
 
 @dataclass
@@ -116,8 +136,43 @@ class ServerVariants(Enum):
     _3CHECK960 = Variant("X", "3check", _("Three check 960"), "☷", chess960=True)
     ANTICHESS = Variant("’", "antichess", _("Antichess"), "🐥")
     ANTICHESS960 = Variant("’", "antichess", _("Antichess960"), "🐓", chess960=True)
-    LOSERS = Variant("losers", "losers", _("Losers Chess"), "L", rating_enabled=False)
+    LOSERS = Variant(
+        "losers", "losers", _("Losers Chess"), SVG_VARIANT_ICONS["losers"], rating_enabled=False
+    )
     GIVEAWAY = Variant("giveaway", "giveaway", _("Giveaway Chess"), "G", rating_enabled=False)
+    RIFLE = Variant(
+        "rifle-chess",
+        "rifle-chess",
+        _("Rifle Chess"),
+        SVG_VARIANT_ICONS["rifle-chess"],
+        rating_enabled=False,
+    )
+    BROTHERHOOD = Variant(
+        "brotherhood",
+        "brotherhood",
+        _("Brotherhood Chess"),
+        SVG_VARIANT_ICONS["brotherhood"],
+        rating_enabled=False,
+    )
+    SPELLCHESS = Variant(
+        "spell-chess",
+        "spell-chess",
+        _("Spell Chess"),
+        SVG_VARIANT_ICONS["spell-chess"],
+        rating_enabled=False,
+        move_encoding=encode_move_spell,
+        move_decoding=decode_move_spell,
+    )
+    MONSTER = Variant(
+        "monster",
+        "monster",
+        _("Monster Chess"),
+        SVG_VARIANT_ICONS["monster"],
+        rating_enabled=False,
+        legal_moves_need_history=True,
+        move_encoding=encode_move_monster,
+        move_decoding=decode_move_monster,
+    )
     RACINGKINGS = Variant("°", "racingkings", _("Racing Kings"), "🚗")
     RACINGKINGS960 = Variant("°", "racingkings", _("Racing Kings 1440"), "🚙", chess960=True)
     HORDE = Variant("š", "horde", _("Horde"), "🐖")
@@ -289,7 +344,7 @@ def register_catalogued_server_variant(
         uci_variant=name,
         display_name=display_name.upper(),
         translated_name=display_name,
-        icon=CATALOGUED_VARIANT_ICON,
+        icon=SVG_VARIANT_ICONS.get(name, CATALOGUED_VARIANT_ICON),
         grand=grand,
         show_promoted=show_promoted,
         legal_moves_need_history=legal_moves_need_history,

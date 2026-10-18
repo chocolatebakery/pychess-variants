@@ -15,6 +15,8 @@ import { GatingInput } from './input/gating';
 import { PromotionInput } from './input/promotion';
 import { DuckInput } from './input/duck';
 import { ArrowingInput } from './input/arrowing';
+import { SpellInput } from './input/spell';
+import { spellPieceMoves } from './spellChess';
 import { ChessgroundController } from './cgCtrl';
 import { BoardName, JSONObject, PyChessModel } from './types';
 import { updateCount, updatePoint } from './info';
@@ -71,6 +73,7 @@ export abstract class GameController extends ChessgroundController implements Ch
     promotion: PromotionInput;
     duck: DuckInput;
     arrowing: ArrowingInput;
+    spell?: SpellInput;
 
     // Game state
     turnColor: cg.Color;
@@ -199,6 +202,8 @@ export abstract class GameController extends ChessgroundController implements Ch
 
         this.turnColor = parts[1] === 'w' ? 'white' : 'black';
         this.suffix = '';
+
+        if (this.variant.name === 'spell-chess') this.spell = new SpellInput(this);
 
         this.chessground.set({
             animation: {
@@ -395,10 +400,12 @@ export abstract class GameController extends ChessgroundController implements Ch
 
     setDests() {
         // console.log("gameCtrl.setDests()");
-        const legalMoves = this.ffishBoard
+        let legalMoves = this.ffishBoard
             .legalMoves()
             .split(' ')
             .filter(o => o);
+        this.spell?.sync();
+        if (this.spell) legalMoves = this.spell.pieceMoves(legalMoves);
         const fakeDrops = this.variant.name === 'ataxx';
         const pieces = this.chessground.state.boardState.pieces;
         const dests = moveDests(legalMoves as UCIMove[], fakeDrops, pieces, this.turnColor);
@@ -485,7 +492,24 @@ export abstract class GameController extends ChessgroundController implements Ch
     }
 
     sendMove(orig: cg.Orig, dest: cg.Key, promo: string) {
-        this.doSendMove(cg2uci(orig + dest + promo));
+        const move = cg2uci(orig + dest + promo);
+        this.doSendMove(this.spell ? this.spell.complete(move) : move);
+    }
+
+    legalMoves() {
+        const moves = super.legalMoves();
+        return this.variant.name === 'spell-chess'
+            ? spellPieceMoves(moves, this.spell?.cast) as ReturnType<ChessgroundController['legalMoves']>
+            : moves;
+    }
+
+    canUseSpells(): boolean {
+        return !this.spectator && this.status < 0 && this.turnColor === this.mycolor &&
+            this.ply === this.steps.length - 1 && this.chessground.state.movable.color === this.mycolor;
+    }
+
+    spellColor(): cg.Color {
+        return this.mycolor;
     }
 
     getAliceFen(fen: string): string {
@@ -557,9 +581,9 @@ export abstract class GameController extends ChessgroundController implements Ch
         // turnColor have to be actualized before setDests() !!!
         this.turnColor = step.turnColor;
 
-        this.setDests();
-
         this.fullfen = step.fen;
+        this.spell?.reset();
+        this.setDests();
         this.suffix = '';
         this.duck.cancel();
         this.arrowing.cancel();
@@ -616,6 +640,7 @@ export abstract class GameController extends ChessgroundController implements Ch
         let lastTime = performance.now();
         let lastKey: cg.Key | undefined;
         return (key: cg.Key) => {
+            if (this.spell?.select(key)) return;
             if (this.arrowing.inputState === 'move') {
                 this.arrowing.onSelect(key);
                 return;

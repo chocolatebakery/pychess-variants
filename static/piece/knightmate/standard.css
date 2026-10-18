@@ -14,7 +14,7 @@
     background-image: url('../../images/pieces/merida/wQ.svg');
 }
 .knightmate piece.k-piece.white {
-    background-image: url('../../images/pieces/merida/wN.svg');
+    background-image: url('../../images/pieces/knightmate/merida/wN.svg');
 }
 .knightmate piece.p-piece.black {
     background-image: url('../../images/pieces/merida/bP.svg');
@@ -32,5 +32,5 @@
     background-image: url('../../images/pieces/merida/bQ.svg');
 }
 .knightmate piece.k-piece.black {
-    background-image: url('../../images/pieces/merida/bN.svg');
+    background-image: url('../../images/pieces/knightmate/merida/bN.svg');
 }

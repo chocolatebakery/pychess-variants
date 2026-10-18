@@ -1,0 +1,670 @@
+/*
+  Fairy-Stockfish, a UCI chess variant playing engine derived from Stockfish
+  Copyright (C) 2018-2022 Fabian Fichter
+
+  Fairy-Stockfish is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  Fairy-Stockfish is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#include <iostream>
+#include <string>
+#include <cstdlib>
+#include <charconv>
+#include <limits>
+
+#include "evaluate.h"
+#include "apiutil.h"
+#include "misc.h"
+#include "partner.h"
+#include "search.h"
+#include "thread.h"
+#include "types.h"
+#include "uci.h"
+#include "xboard.h"
+
+namespace Stockfish {
+
+namespace {
+
+  const Search::LimitsType analysisLimits = []{
+    Search::LimitsType limits;
+    limits.infinite = 1;
+    return limits;
+  }();
+
+  bool parse_non_negative_int64(const std::string& text, TimePoint& out) {
+    if (text.empty()) {
+        out = 0;
+        return true;
+    }
+
+    long long parsed = 0;
+    const char* begin = text.data();
+    const char* end = begin + text.size();
+    auto [ptr, ec] = std::from_chars(begin, end, parsed);
+    if (ec != std::errc() || ptr != end || parsed < 0 || parsed > std::numeric_limits<TimePoint>::max())
+        return false;
+
+    out = TimePoint(parsed);
+    return true;
+  }
+
+  bool parse_scaled_time_token(const std::string& text, TimePoint scale, TimePoint& out) {
+    TimePoint parsed = 0;
+    if (!parse_non_negative_int64(text, parsed))
+        return false;
+    if (parsed > std::numeric_limits<TimePoint>::max() / scale)
+        return false;
+    out = parsed * scale;
+    return true;
+  }
+
+  bool parse_level_base_time(const std::string& token, TimePoint& out) {
+    const std::size_t colon = token.find(':');
+    if (colon == std::string::npos)
+        return parse_scaled_time_token(token, 60 * 1000, out);
+
+    TimePoint minutes = 0;
+    TimePoint seconds = 0;
+    if (!parse_non_negative_int64(token.substr(0, colon), minutes))
+        return false;
+    if (!parse_non_negative_int64(token.substr(colon + 1), seconds))
+        return false;
+
+    const TimePoint maxTime = std::numeric_limits<TimePoint>::max();
+    if (minutes > maxTime / (60 * 1000))
+        return false;
+
+    TimePoint parsed = minutes * 60 * 1000;
+    if (seconds > (maxTime - parsed) / 1000)
+        return false;
+
+    out = parsed + seconds * 1000;
+    return true;
+  }
+
+} // namespace
+
+namespace XBoard {
+
+  StateMachine* stateMachine = nullptr;
+
+  StateMachine::~StateMachine() {
+    join_ponder_worker();
+  }
+
+  void StateMachine::launch_ponder_worker() {
+
+    join_ponder_worker();
+
+    if (shuttingDown.load())
+        return;
+
+    // A late cancellation is harmless because ponder() rechecks atomically
+    // before starting the ponder search.
+    if (ponderMove.load() == MOVE_NONE)
+        return;
+
+    std::lock_guard<std::mutex> lk(ponderMutex);
+    if (ponderMove.load() == MOVE_NONE)
+        return;
+
+    ponderWorker.reset(new NativeThread(&StateMachine::ponder, this));
+  }
+
+  void StateMachine::join_ponder_worker() {
+
+    std::unique_ptr<NativeThread> worker;
+
+    {
+        std::lock_guard<std::mutex> lk(ponderMutex);
+        if (!ponderWorker)
+            return;
+        worker = std::move(ponderWorker);
+    }
+
+    worker->join();
+  }
+
+  void StateMachine::cancel_ponder_worker() {
+    ponderMove.store(MOVE_NONE);
+    join_ponder_worker();
+  }
+
+  void StateMachine::shutdown_ponder_worker() {
+    shuttingDown.store(true);
+    ponderMove.store(MOVE_NONE);
+    Threads.abort = true;
+    Threads.stop = true;
+    Threads.main()->wait_for_search_finished();
+    join_ponder_worker();
+  }
+
+  // go() starts the search for game play, analysis, or perft.
+
+  void StateMachine::go(Search::LimitsType searchLimits, bool ponder) {
+
+    searchLimits.startTime = now(); // As early as possible!
+
+    Threads.start_thinking(pos, states, searchLimits, ponder);
+  }
+
+  // ponder() starts a ponder search
+
+  void StateMachine::ponder() {
+
+    if (shuttingDown.load())
+        return;
+
+    Move pm = ponderMove.exchange(MOVE_NONE);
+    if (pm == MOVE_NONE)
+        return;
+
+    sync_cout << "Hint: " << UCI::move(pos, pm) << sync_endl;
+    {
+        std::lock_guard<std::mutex> lk(ponderMutex);
+        ponderHighlight = highlight(UCI::square(pos, from_sq(pm)));
+    }
+    do_move(pm);
+    if (shuttingDown.load())
+        return;
+    go(limits, true);
+  }
+
+  // stop() stops an ongoing search (if any)
+  // and does not print/apply a move if aborted
+
+  void StateMachine::stop(bool abort) {
+
+    if (abort)
+        Threads.abort = true;
+    Threads.stop = true;
+    Threads.main()->wait_for_search_finished();
+    // Ensure that current position does not get out of sync with GUI
+    if (Threads.main()->ponder)
+    {
+        assert(moveList.size());
+        undo_move();
+        Threads.main()->ponder = false;
+    }
+  }
+
+  // setboard() is called when engine receives the "setboard" XBoard command.
+
+  void StateMachine::setboard(std::string fen) {
+
+    const Variant* v = variants.get(Options["UCI_Variant"]);
+    if (fen.empty())
+        fen = v->startFen;
+
+    const FEN::FenValidation validation = FEN::validate_fen(fen, v, Options["UCI_Chess960"]);
+    if (validation != FEN::FEN_OK)
+    {
+        sync_cout << "Error (bad setboard): invalid FEN (validation error "
+                  << validation << ")." << sync_endl;
+        return;
+    }
+
+    states = StateListPtr(new std::deque<StateInfo>(1)); // Drop old and create a new one
+    moveList.clear();
+    pos.set(v, fen, Options["UCI_Chess960"], &states->back(), Threads.main());
+  }
+
+  // do_move() is called when engine needs to apply a move when using XBoard protocol.
+
+  void StateMachine::do_move(Move m) {
+
+    // transfer states back
+    if (Threads.setupStates.get())
+        states = std::move(Threads.setupStates);
+
+    if (m == MOVE_NONE)
+        return;
+    moveList.push_back(m);
+    states->emplace_back();
+    pos.do_move(m, states->back());
+  }
+
+  // undo_move() is called when the engine receives the undo command in XBoard protocol.
+
+  void StateMachine::undo_move() {
+
+    // transfer states back
+    if (Threads.setupStates.get())
+        states = std::move(Threads.setupStates);
+
+    pos.undo_move(moveList.back());
+    states->pop_back();
+    moveList.pop_back();
+  }
+
+  std::string StateMachine::highlight(std::string square) {
+    Bitboard promotions = 0, captures = 0, quiets = 0;
+    // Collect targets
+    for (const auto& m : MoveList<LEGAL>(pos))
+    {
+        Square from = from_sq(m), to = to_sq(m);
+        if (is_ok(from) && UCI::square(pos, from) == square && !is_pass(m))
+        {
+            if (is_promotion_move(m) || is_two_leg_promotion(m))
+                promotions |= to;
+            else if (pos.capture(m))
+                captures |= to;
+            else
+            {
+                if (type_of(m) == CASTLING && !pos.is_chess960())
+                    to = make_square(to > from ? pos.castling_kingside_file()
+                                                : pos.castling_queenside_file(), rank_of(from));
+                quiets |= to;
+            }
+        }
+    }
+    // Generate color FEN
+    int emptyCnt;
+    std::ostringstream ss;
+    if (pos.variant()->commitGates) {
+        ss << pos.max_file() + 1 << "/";
+    }
+    for (Rank r = pos.max_rank(); r >= RANK_1; --r)
+    {
+        for (File f = FILE_A; f <= pos.max_file(); ++f)
+        {
+            for (emptyCnt = 0; f <= pos.max_file() && !((promotions | captures | quiets) & make_square(f, r)); ++f)
+                ++emptyCnt;
+
+            if (emptyCnt)
+                ss << emptyCnt;
+
+            if (f <= pos.max_file())
+                ss << (promotions & make_square(f, r) ? "M" : captures & make_square(f, r) ? "R" : "Y");
+        }
+
+        if (r > RANK_1)
+            ss << '/';
+    }
+    if (pos.variant()->commitGates) {
+        ss << "/" << pos.max_file() + 1;
+    }
+    return ss.str();
+  }
+
+/// StateMachine::process_command() processes commands of the XBoard protocol.
+
+void StateMachine::process_command(std::string token, std::istringstream& is) {
+  if (token == "protover")
+  {
+      std::string vars = "chess";
+      for (std::string v : variants.get_keys())
+          if (v != "chess")
+              vars += "," + v;
+      sync_cout << "feature setboard=1 usermove=1 time=1 memory=1 smp=1 colors=0 draw=0 "
+                << "highlight=1 name=0 sigint=0 ping=1 myname=\""
+                << engine_info(false, true) << "\" " << "variants=\"" << vars << "\""
+                << Options << sync_endl;
+      sync_cout << "feature done=1" << sync_endl;
+  }
+  else if (token == "accepted" || token == "rejected") {}
+  else if (token == "hover" || token == "put") {}
+  else if (token == "lift")
+  {
+      if (is >> token)
+      {
+          if (Threads.main()->ponder)
+          {
+              if (token == UCI::square(pos, from_sq(moveList.back())))
+              {
+                  std::string highlightText;
+                  std::lock_guard<std::mutex> lk(ponderMutex);
+                  highlightText = ponderHighlight;
+                  sync_cout << "highlight " << highlightText << sync_endl;
+              }
+              else
+              {
+                  Move currentPonderMove = moveList.back();
+                  stop();
+                  sync_cout << "highlight " << highlight(token) << sync_endl;
+                  // Restart ponder search with random guess
+                  auto moves = MoveList<LEGAL>(pos);
+                  std::vector<Move> filteredMoves;
+                  copy_if(moves.begin(), moves.end(), back_inserter(filteredMoves), [&](const Move m) {
+                    return is_ok(from_sq(m)) && UCI::square(pos, from_sq(m)) == token;
+                  });
+                  if (filteredMoves.size())
+                  {
+                      static PRNG rng(now());
+                      ponderMove.store(filteredMoves.at(rng.rand<unsigned>() % filteredMoves.size()));
+                  }
+                  else
+                      ponderMove.store(currentPonderMove);
+                  ponder();
+              }
+          }
+          else
+              sync_cout << "highlight " << highlight(token) << sync_endl;
+      }
+  }
+  else if (token == "ping")
+  {
+      if (!(is >> token))
+          token = "";
+      sync_cout << "pong " << token << sync_endl;
+  }
+  else if (token == "new")
+  {
+      stop();
+      Search::clear();
+      setboard();
+      // play second by default
+      playColor = ~pos.side_to_move();
+      Threads.sit = false;
+      Partner.reset();
+  }
+  else if (token == "variant")
+  {
+      stop();
+      if (is >> token)
+          Options["UCI_Variant"] = token;
+      setboard();
+  }
+  else if (token == "force" || token == "result")
+  {
+      stop();
+      playColor = COLOR_NB;
+  }
+  else if (token == "?")
+  {
+      if (!Threads.main()->ponder)
+          stop(false);
+  }
+  else if (token == "go")
+  {
+      stop();
+      playColor = pos.side_to_move();
+      go(limits);
+      moveAfterSearch = true;
+  }
+  else if (token == "level" || token == "st" || token == "sd" || token == "time" || token == "otim")
+  {
+      if (token == "level")
+      {
+          int movestogo = 0;
+          std::string baseToken, incToken;
+          TimePoint baseTime = 0, increment = 0;
+
+          if (   (is >> movestogo)
+              && (is >> baseToken) && parse_level_base_time(baseToken, baseTime)
+              && (is >> incToken) && parse_scaled_time_token(incToken, 1000, increment))
+          {
+              limits.movestogo = movestogo;
+              limits.time[WHITE] = limits.time[BLACK] = baseTime;
+              limits.inc[WHITE] = limits.inc[BLACK] = increment;
+              limits.movetime = 0;
+          }
+          else
+              sync_cout << "Error (bad level): level" << sync_endl;
+      }
+      else if (token == "sd")
+      {
+          int depth = 0;
+          if (is >> depth && depth >= 1)
+              limits.depth = depth;
+          else
+              sync_cout << "Error (bad sd): sd" << sync_endl;
+      }
+      else if (token == "st")
+      {
+          TimePoint movetime = 0;
+          if (is >> token && parse_scaled_time_token(token, 1000, movetime))
+          {
+              limits.movetime = movetime;
+              limits.movestogo = 0;
+              limits.time[WHITE] = limits.time[BLACK] = 0;
+          }
+          else
+              sync_cout << "Error (bad st): st" << sync_endl;
+      }
+      // Note: time/otim are in centi-, not milliseconds
+      else if (token == "time")
+      {
+          if (is >> token)
+          {
+              Color us = playColor != COLOR_NB ? playColor : pos.side_to_move();
+              TimePoint time = 0;
+              if (parse_scaled_time_token(token, 10, time))
+                  limits.time[us] = time;
+          }
+      }
+      else if (token == "otim")
+      {
+          if (is >> token)
+          {
+              Color them = playColor != COLOR_NB ? ~playColor : ~pos.side_to_move();
+              TimePoint time = 0;
+              if (parse_scaled_time_token(token, 10, time))
+                  limits.time[them] = time;
+          }
+      }
+  }
+  else if (token == "setboard")
+  {
+      stop();
+      std::string fen;
+      std::getline(is >> std::ws, fen);
+      // Check if setboard actually indicates a passing move
+      // to avoid unnecessarily clearing the move history
+      if (pos.pass(pos.side_to_move()))
+      {
+          StateInfo st;
+          Position p;
+          p.set(pos.variant(), fen, pos.is_chess960(), &st, pos.this_thread());
+          Move m;
+          std::string passMove = "@@@@";
+          if ((m = UCI::to_move(pos, passMove)) != MOVE_NONE)
+              do_move(m);
+          // apply setboard if passing does not lead to a match
+          if (pos.key() != p.key())
+              setboard(fen);
+      }
+      else
+          setboard(fen);
+      // Winboard sends setboard after passing moves
+      if (Options["UCI_AnalyseMode"])
+          go(analysisLimits);
+      else if (pos.side_to_move() == playColor)
+      {
+          go(limits);
+          moveAfterSearch = true;
+      }
+  }
+  else if (token == "cores")
+  {
+      stop();
+      if (is >> token)
+          Options["Threads"] = token;
+      pos.set_thread(Threads.main());
+  }
+  else if (token == "memory")
+  {
+      stop();
+      if (is >> token)
+          Options["Hash"] = token;
+  }
+  else if (token == "hard" || token == "easy")
+      Options["Ponder"] = token == "hard";
+  else if (token == "option")
+  {
+      std::string name, value;
+      is >> std::ws;
+      std::getline(is, name, '=');
+      std::getline(is, value);
+      if (Options.count(name))
+      {
+          if (Options[name].get_type() == "check")
+              value = value == "1" ? "true" : "false";
+          Options[name] = value;
+          if (name == "Threads")
+              pos.set_thread(Threads.main());
+      }
+  }
+  else if (token == "analyze")
+  {
+      stop();
+      Options["UCI_AnalyseMode"] = std::string("true");
+      go(analysisLimits);
+  }
+  else if (token == "exit")
+  {
+      stop();
+      Options["UCI_AnalyseMode"] = std::string("false");
+  }
+  else if (token == "undo")
+  {
+      stop();
+      if (moveList.size())
+      {
+          undo_move();
+          if (Options["UCI_AnalyseMode"])
+              go(analysisLimits);
+      }
+  }
+  else if (token == "remove")
+  {
+      stop();
+      if (moveList.size() >= 2)
+      {
+          undo_move();
+          undo_move();
+          if (Options["UCI_AnalyseMode"])
+              go(analysisLimits);
+      }
+  }
+  // Bughouse commands
+  else if (token == "partner")
+      Partner.parse_partner(is);
+  else if (token == "ptell")
+  {
+      Partner.parse_ptell(is, pos);
+      // play move requested by partner
+      // Partner.moveRequested can only be set if search was successfully aborted
+      if (moveAfterSearch && Partner.moveRequested)
+      {
+          assert(Threads.abort);
+          stop();
+          sync_cout << "move " << UCI::move(pos, Partner.moveRequested) << sync_endl;
+          do_move(Partner.moveRequested);
+          moveAfterSearch = false;
+          Partner.moveRequested = MOVE_NONE;
+      }
+  }
+  else if (token == "holding")
+  {
+      stop();
+      // holding [<white>] [<black>] <color><piece>
+      std::string white_holdings, black_holdings;
+      if (   std::getline(is, token, '[') && std::getline(is, white_holdings, ']')
+          && std::getline(is, token, '[') && std::getline(is, black_holdings, ']'))
+      {
+          std::string fen;
+          char color, pieceType;
+          // Use the obtained holding if available to avoid race conditions
+          if (is >> color && is >> pieceType)
+          {
+              fen = pos.fen();
+              const std::size_t bracket = fen.find(']');
+              if (bracket != std::string::npos)
+                  fen.insert(bracket, 1,
+                             std::toupper(static_cast<unsigned char>(color)) == 'B'
+                                 ? char(std::tolower(static_cast<unsigned char>(pieceType)))
+                                 : char(std::toupper(static_cast<unsigned char>(pieceType))));
+          }
+          else
+          {
+              std::transform(black_holdings.begin(), black_holdings.end(), black_holdings.begin(),
+                             [](unsigned char c) { return char(std::tolower(c)); });
+              fen = pos.fen(false, false, 0, white_holdings + black_holdings);
+          }
+          setboard(fen);
+      }
+      // restart search
+      if (moveAfterSearch)
+          go(limits);
+  }
+  // Additional custom non-XBoard commands
+  else if (token == "perft")
+  {
+      stop();
+      Search::LimitsType perft_limits;
+      int perftDepth = 0;
+      if (is >> perftDepth && perftDepth >= 1)
+          perft_limits.perft = perftDepth;
+      else
+      {
+          sync_cout << "Error (bad perft): perft" << sync_endl;
+          return;
+      }
+      go(perft_limits);
+  }
+  else if (token == "d")
+      sync_cout << pos << sync_endl;
+  else if (token == "eval")
+      sync_cout << Eval::trace(pos) << sync_endl;
+  // Move strings and unknown commands
+  else
+  {
+      bool isMove = false;
+
+      if (token == "usermove")
+      {
+          if (!(is >> token))
+          {
+              sync_cout << "Error (bad usermove): usermove" << sync_endl;
+              return;
+          }
+          isMove = true;
+      }
+
+      // Handle pondering
+      if (Threads.main()->ponder)
+      {
+          assert(moveList.size());
+          if (token == UCI::move(pos, moveList.back()))
+          {
+              // ponderhit
+              moveAfterSearch = true;
+              Threads.main()->ponder = false;
+              return;
+          }
+      }
+      stop(false);
+
+      // Apply move
+      Move m;
+      if ((m = UCI::to_move(pos, token)) != MOVE_NONE)
+          do_move(m);
+      else
+          sync_cout << (isMove ? "Illegal move: " : "Error (unknown command): ") << token << sync_endl;
+
+      // Restart search if applicable
+      if (Options["UCI_AnalyseMode"])
+          go(analysisLimits);
+      else if (pos.side_to_move() == playColor)
+      {
+          moveAfterSearch = true;
+          go(limits);
+      }
+  }
+}
+
+} // namespace XBoard
+
+} // namespace Stockfish

@@ -24,6 +24,8 @@ const variantNames = [
     'testfsfpieceoptioncapa',
     'testfsfthreekingsstandard',
     'testfsfknightmatepieces',
+    'testfsfberolinapieces',
+    'testfsfspellpieces',
     'testreformedcourieroverride',
     'testcentauroverride',
     'testmakrukwall',
@@ -93,6 +95,37 @@ test('Knightmate defaults to its normal-chess artwork without changing engine ro
     expect(variant.kingRoles).toEqual(['k-piece']);
     expect(variant.pieceRow.white).toContain('m-piece');
     expect(variant.promotion.order).toContain('m');
+    expect(VARIANTS.chess.pieceFamily).toBe('standard');
+});
+
+test.each([
+    ['testfsfberolinapieces', 'berolina', 'berolina', ['p', 'n', 'b', 'r', 'q', 'k']],
+    ['testfsfspellpieces', 'spell-chess', 'spellchess', ['p', 'n', 'b', 'r', 'q', 'k', 'f', 'j']],
+] as const)('%s uses its supplied Merida artwork and respects uploaded sets', (name, builtin, family, pieces) => {
+    const meta: CataloguedVariantClientDocument = {
+        name,
+        source: 'fairy-stockfish-builtin',
+        fsfBuiltinVariant: builtin,
+        clientVariant: 'chess',
+        ini: '',
+        startFen: VARIANTS.chess.startFen,
+        width: 8,
+        height: 8,
+        pieces: [...pieces],
+        kingRoles: ['k'],
+    };
+    const variant = register(meta);
+    const board = document.createElement('div');
+    board.className = family;
+    boardSettings.updateScopedPieceStyle(variant, board);
+
+    expect(variant.pieceFamily).toBe(family);
+    expect(boardSettings.pieceCSS(family, variant)).toBe('merida');
+    expect(board.classList.contains(`piece-style-${family}-merida`)).toBe(true);
+    expect(document.getElementById(`piece-set-${family}-merida`)?.getAttribute('href')).toContain(
+        `/piece-css/${family}/merida.css`,
+    );
+    expect(cataloguedCompatiblePieceFamily({ ...meta, hasPieceSet: true })).toBeUndefined();
     expect(VARIANTS.chess.pieceFamily).toBe('standard');
 });
 

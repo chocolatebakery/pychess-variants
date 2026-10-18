@@ -5,6 +5,7 @@ import { gameInfo } from './gameInfo';
 import { renderTimeago } from './datetime';
 import { VARIANTS } from './variants';
 import { PyChessModel } from './types';
+import { sessionScoreView } from './sessionScore';
 
 function runGround(vnode: VNode, model: PyChessModel, aliceBoardVNode?: VNode) {
     const el = vnode.elm as HTMLElement;
@@ -75,6 +76,10 @@ export function roundView(model: PyChessModel): VNode[] {
             ],
         ),
         h('under-left#spectators'),
-        h('under-board', [h('div.ctable-container'), h('div.games-container')]),
+        h('under-board', [
+            h('div.ctable-container'),
+            ...(model.username === model.wplayer || model.username === model.bplayer ? [sessionScoreView(model.username)] : []),
+            h('div.games-container'),
+        ]),
     ];
 }

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 13.229166 13.229167">
+  <defs>
+    <mask id="pips" maskUnits="userSpaceOnUse" x="0" y="0" width="13.229166" height="13.229167">
+      <rect width="13.229166" height="13.229167" fill="#fff"/>
+      <g fill="#000">
+        <ellipse cx="9.372527" cy="3.57635" rx="1.322917" ry="1.32291"/>
+        <ellipse cx="9.372527" cy="6.48675" rx="1.322917" ry="1.32291"/>
+        <ellipse cx="9.372527" cy="9.39715" rx="1.322917" ry="1.32291"/>
+        <ellipse cx="3.755738" cy="3.64364" rx="1.322917" ry="1.32291"/>
+        <ellipse cx="3.755738" cy="6.55404" rx="1.322917" ry="1.32291"/>
+        <ellipse cx="3.755738" cy="9.46444" rx="1.322917" ry="1.32291"/>
+      </g>
+    </mask>
+  </defs>
+  <rect x="1.322917" y="1.32293" width="10.583333" height="10.583326" ry="1.905897" fill="#70787d" mask="url(#pips)"/>
+</svg>

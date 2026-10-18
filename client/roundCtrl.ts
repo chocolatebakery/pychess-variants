@@ -48,6 +48,8 @@ import { bindPocketHotkeys } from './pocketHotkeys';
 import { OngoingRoundGamesController } from './ongoingRoundGames';
 import { confirmDialog } from './confirmDialog';
 import { animatePassMove } from './passMove';
+import { FSX_VARIANTS } from './fsx';
+import { trackSessionGame, recordSessionResult, refreshSessionScore } from './sessionScore';
 import { premoveForVariant } from './cataloguedPremove';
 import {
     parsePendingMove,
@@ -193,6 +195,9 @@ export class RoundController extends GameController {
         this.byoyomiPeriod = Number(model['byo']);
         this.byoyomi = this.variant.rules.defaultTimeControl === 'byoyomi';
         this.finishedGame = this.status >= 0;
+        if (!this.spectator && !this.finishedGame) {
+            trackSessionGame(this.username, this.gameId, this.variant.name, this.chess960);
+        }
         this.cevalReported = false;
         this.tv = model['tv'];
         this.profileid = model['profileid'];
@@ -220,7 +225,7 @@ export class RoundController extends GameController {
 
         this.tournamentGame = this.tournamentId !== '';
         const parts = this.fullfen.split(' ');
-        this.clockOn = Number(parts[parts.length - 1]) >= 2 && !this.corr;
+        this.clockOn = Number(parts[this.variant.name === 'spell-chess' ? 5 : parts.length - 1]) >= 2 && !this.corr;
 
         const berserkId = this.mycolor === 'white' ? 'wberserk' : 'bberserk';
         // Not berserked yet, but allowed to do it
@@ -1120,6 +1125,9 @@ export class RoundController extends GameController {
         if (msg.status >= 0) {
             this.status = msg.status;
             this.result = msg.result;
+            if (!this.spectator && recordSessionResult(this.username, this.gameId, msg.status, msg.result, this.mycolor)) {
+                refreshSessionScore(this.username);
+            }
             this.syncCevalActiveRoundTracking();
             this.clocks[0].pause(false);
             this.clocks[1].pause(false);
@@ -1183,13 +1191,15 @@ export class RoundController extends GameController {
 
     onMsgBoard(msg: MsgBoard) {
         if (msg.gameId !== this.gameId) return;
+        this.spell?.reset();
         this.positionId = msg.positionId;
 
         // console.log("got board msg:", msg);
         let latestPly;
         if (this.spectator) {
             // Fix https://github.com/pychess/pychess-variants/issues/687
-            latestPly = this.ply === -1 || msg.ply === this.ply + 1;
+            latestPly = this.ply === -1 || msg.ply === this.ply + 1 ||
+                (this.variant.name === 'monster' && msg.ply === this.ply + 2);
         } else {
             latestPly = this.ply === -1 || msg.ply >= this.ply + 1; // when receiving a board msg with full list of moves (aka steps) after reconnecting
             // its ply might be ahead with 2 ply - our move that failed to get confirmed
@@ -1316,7 +1326,10 @@ export class RoundController extends GameController {
         if (lastMove) {
             //const piece = this.chessground.state.boardState.pieces.get(lastMove[1] as cg.Key);
             //capture = (piece !== undefined && piece.role !== '_-piece' && step.san?.slice(0, 2) !== 'O-') || (step.san?.slice(1, 2) === 'x');
-            capture = this.ffishBoard.isCapture(msg.lastMove);
+            // FSX rejects querying a past move against the already-restored FEN on reload.
+            capture = FSX_VARIANTS.has(this.variant.name)
+                ? !!step.san?.includes('x')
+                : this.ffishBoard.isCapture(msg.lastMove);
         }
         if (msg.steps.length <= 2 && this.steps.length > 1 && (this.turnColor === this.mycolor || this.spectator)) {
             if (!this.finishedGame) sound.moveSound(this.variant, capture);
@@ -1536,6 +1549,14 @@ export class RoundController extends GameController {
                 this.clearLocalMoveQueueState();
                 this.doSend({ type: 'board', gameId: this.gameId });
                 return;
+            }
+
+            if (FSX_VARIANTS.has(this.variant.name) && this.ffishBoard.push(move)) {
+                try {
+                    this.chessground.set({ fen: this.ffishBoard.fen() });
+                } finally {
+                    this.ffishBoard.pop();
+                }
             }
 
             // Persist before socket send so a crash/refresh between "create msg" and "server board ack"

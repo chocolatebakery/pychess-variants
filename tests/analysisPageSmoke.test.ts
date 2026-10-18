@@ -1024,6 +1024,20 @@ describe('analysis page smoke coverage', () => {
         expect(root.querySelector('under-board #janggi-setup-buttons')).toBeNull();
     });
 
+    test.each(['White', 'Black'])('round view keeps the original crosstable before the session score for %s', username => {
+        const root = renderNodes(roundView(makeModel({ username, gameId: 'cPeP5Di1', status: -1 })));
+        const children = root.querySelector('under-board')!.children;
+        expect(children[0].className).toBe('ctable-container');
+        expect(children[1].id).toBe('session-score');
+        expect(children[2].className).toBe('games-container');
+    });
+
+    test('spectators keep the original crosstable without a personal session score', () => {
+        const root = renderNodes(roundView(makeModel({ username: 'spectator', gameId: 'cPeP5Di1', status: -1 })));
+        expect(root.querySelector('under-board')!.firstElementChild!.className).toBe('ctable-container');
+        expect(root.querySelector('#session-score')).toBeNull();
+    });
+
     test('only the Alice round view includes the optional second board', () => {
         const round = renderNodes(roundView(makeModel({ variant: 'alice', gameId: 'cPeP5Di1', status: -1 })));
         expect(round.querySelector('.round-app.alice-round #aliceboard')).not.toBeNull();

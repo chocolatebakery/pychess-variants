@@ -3,6 +3,7 @@ import * as util from 'chessgroundx/util';
 import { read } from 'chessgroundx/fen';
 
 import { Variant, variantGroups } from './variants';
+import { splitSpellMove } from './spellChess';
 
 export const WHITE = 0;
 export const BLACK = 1;
@@ -48,7 +49,11 @@ export function uci2cg(move: string): string {
 }
 
 export function uci2LastMove(move: string | undefined): cg.Orig[] | undefined {
-    if (!move) return undefined;
+    if (!move || move === '0000') return undefined;
+    const spellMove = splitSpellMove(move);
+    if (spellMove.cast) {
+        return [spellMove.move.slice(0, 2) as cg.Key, spellMove.move.slice(2, 4) as cg.Key, spellMove.cast.square];
+    }
     let moveStr = uci2cg(move);
     if (moveStr.startsWith('+')) moveStr = moveStr.slice(1);
     const comma = moveStr.indexOf(',');

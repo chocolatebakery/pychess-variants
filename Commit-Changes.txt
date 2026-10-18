@@ -1,0 +1,110 @@
+CHANGES SINCE THE LAST PUSH
+===========================
+
+Repository: pychess-variants
+Branch: master
+Remote baseline: origin/master
+Verified remote commit: 7548298d8e4c7c69b2efbfaf2714c9d9d0e58f51
+Baseline subject: Remove Xiangqi, Janggi, Shogi from the pool
+
+The working tree contains the changes below. HEAD still matches the remote
+baseline; these changes have not been committed or pushed.
+
+COMMIT COMMAND
+--------------
+
+Run from the pychess-variants directory after reviewing and staging the
+intended files:
+
+git commit -m "Changes"
+
+Optional version with an English commit body:
+
+git commit -m "Changes" -m "Integrate the isolated FSX engine, expand Random Dice, add Spell and Monster gameplay, update visual assets, and add manual bot tests and session scores below the original crosstable."
+
+CHANGE SUMMARY
+--------------
+
+1. Separate Fairy-Stockfish-X engine
+   - Add pyffish_fsx and a separately loaded ffish-fsx JS/WASM package.
+   - Preserve the official and Alice engines and route variants explicitly.
+   - Vendor corresponding FSX sources, browser binaries, types and GPL notices.
+   - Build the Python extension from source on Linux/WSL instead of relying
+     on the ABI of a wheel built on another machine.
+   - Update dependencies, locks, static asset copying and Docker build inputs.
+   - Install the local FSX Python package before the main application in the
+     native Render build script; document the same order for manual pip builds.
+
+2. Random Dice variants
+   - Add Berolina, Extinction, Kinglet, Three Kings and Torpedo using the
+     official engine.
+   - Add Rifle Chess, Brotherhood, Spell Chess and Monster Chess using FSX.
+   - Expand Random Dice from 18 to 27 equally weighted entries, pool version 7.
+   - Exclude the four FSX entries when the Python FSX engine is unavailable,
+     leaving 23 entries; never substitute ordinary chess rules for FSX.
+   - Preserve Wild 29, the operating-system-backed draw, and the existing
+     immediate-repeat exclusion for rematches.
+   - Keep normal game creation limited to Wild 29 and Random Dice, without
+     introducing independent ratings for the added variants.
+
+3. Spell Chess
+   - Add Freeze and Jump controls, target selection, cancellation, reserves,
+     cooldowns and board markers.
+   - Preserve complete spell-and-piece moves, promotions and extended FENs.
+   - Preserve spell targets in PGN notation for unambiguous imports/replays.
+   - Handle FSX board prediction and capture detection separately from chess.
+
+4. Monster Chess
+   - Load the FSX INI definition: White has a king and four pawns and moves
+     twice; Black has its full army and moves once.
+   - Automatically play the mandatory Black pass between White's moves.
+   - Preserve passes in storage and PGN without charging Black's clock or
+     granting Black an increment for the automatic pass.
+   - Support takebacks, reloading and recovery after a pending forced pass.
+   - Preserve the supplied FSX king-capture rules rather than replacing them
+     with a different checkmate-based Monster implementation.
+
+5. Manual test games
+   - Add a separate lobby block for Monster, Rifle and Spell Chess against
+     Random-Mover, with color and time controls.
+   - Keep direct FSX bot games casual and use Random-Mover.
+   - Disable computed FSX analysis/AI where the standard worker does not
+     support these rules; retain manual analysis and replay.
+
+6. Session scores and the original scoreboard
+   - Add per-variant wins, draws and losses with totals and a reset control.
+   - Store session scores per user and browser tab, surviving page reloads.
+   - Avoid duplicate results and ignore archives, aborts and engine errors.
+   - Keep Chess960 separate from ordinary chess in session totals.
+   - Keep the original head-to-head crosstable FIRST on the game page.
+   - Display the added session scoreboard BELOW the original crosstable.
+   - Leave the original crosstable's data, behavior and visibility rules
+     unchanged; do not replace it or alter ratings.
+
+7. Visual assets
+   - Integrate supplied variant logos with theme-aware SVG masks.
+   - Add the Monster logo from new_icons/monster.svg.
+   - Update Knightmate's marked royal knight and king-shaped commoners.
+   - Add Berolina pawns and Spell Chess piece/potion assets and generated CSS.
+   - Give Random Dice its dice logo while preserving the original dice SVG.
+
+8. Documentation and regression coverage
+   - Add FSX-no-Site.md and Recursos-Visuais.md.
+   - Update README and Render installation instructions, including the
+     continued requirement for an online MongoDB instance such as Atlas.
+   - Add engine routing/rule tests, spell/Monster codecs and PGN coverage,
+     game/reload/rematch tests, visual asset checks and session score tests.
+   - Add regression tests for keeping the original scoreboard first.
+
+BEFORE COMMITTING
+-----------------
+
+- Review git status and the staged diff; this file does not stage anything.
+- Include the intended new files, especially vendor/, variants-fsx.ini,
+  client/server additions, SVG assets, generated piece CSS and tests.
+- Do not stage temporary files from an interrupted documentation build,
+  such as static/docs/TnbdVCgx.
+- Do not include local tool environments, logs, videos or credentials.
+- Compilation guides and build exports in sibling workspace directories
+  are outside this Git repository and are not included by this commit.
+- No commit or push was performed when preparing these instructions.

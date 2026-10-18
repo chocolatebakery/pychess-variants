@@ -667,6 +667,20 @@ async def handle_analysis(
         app_state.games[data["gameId"]] = game
         # TODO: maybe we have to schedule game.remove() ?
 
+    from fsx import FSX_VARIANTS
+
+    if game.variant in FSX_VARIANTS:
+        await ws_send_json(
+            ws,
+            chat_response(
+                "roundchat",
+                "",
+                "Computer analysis is not available for FSX variants.",
+                room="spectator",
+            ),
+        )
+        return
+
     analysis_requested = False
 
     dropped_stale_work = drop_stale_analysis_work(app_state)

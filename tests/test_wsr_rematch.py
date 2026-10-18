@@ -10,6 +10,7 @@ from catalogued_variants import (
     register_catalogued_variant_doc,
 )
 from const import AI_OFFLINE_MESSAGE, CASUAL
+from fsx import FSX_VARIANTS, fsx_available
 from game import Game
 from mongomock_motor import AsyncMongoMockClient
 from newid import id8
@@ -18,7 +19,7 @@ from pymongo.asynchronous.mongo_client import AsyncMongoClient
 from random_modes import RANDOM_DICE_POOL, RANDOM_MODE_POOLS, random_context_for_entry
 from seek import Seek
 from user import User
-from utils import MAX_CUSTOM_FEN_LENGTH, join_seek, sanitize_fen
+from utils import MAX_CUSTOM_FEN_LENGTH, join_seek, load_game, sanitize_fen
 from variants import unregister_catalogued_server_variant
 from wsl import handle_create_ai_challenge
 from wsr import handle_rematch
@@ -33,6 +34,14 @@ class RematchTestCase(unittest.IsolatedAsyncioTestCase):
         self.app = make_app(db_client=cast(AsyncMongoClient, AsyncMongoMockClient(tz_aware=True)))
         await init_state(self.app)
         self.state = get_app_state(self.app)
+        # Test startup skips catalogue seeding; Dice still needs its official builtins.
+        for entry in RANDOM_DICE_POOL.entries:
+            metadata = FSF_CATALOGUED_BUILTIN_VARIANTS.get(entry.variant)
+            if metadata is not None:
+                register_catalogued_variant_doc(
+                    self.state, _build_fsf_builtin_doc(entry.variant, metadata)
+                )
+                self.addCleanup(unregister_catalogued_server_variant, entry.variant)
         self.player = User(self.state, username="rematch-player")
         self.opponent = User(self.state, username="rematch-opponent")
         for user in (self.player, self.opponent):
@@ -187,7 +196,7 @@ customPiece1 = p:mKmDmA
         ):
             for mode, pool in RANDOM_MODE_POOLS.items():
                 for entry in pool.entries:
-                    if entry.variant == "fogofwar":
+                    if entry.variant == "fogofwar" or entry.variant in FSX_VARIANTS:
                         continue
                     with self.subTest(mode=mode, entry=entry.entry_id):
                         response = await self.ai_challenge_entry(mode, entry)
@@ -209,6 +218,8 @@ customPiece1 = p:mKmDmA
         random_mover = self.state.users["Random-Mover"]
         with patch("wsl.send_bot_game_start_unless_streaming", new_callable=AsyncMock):
             for entry in RANDOM_DICE_POOL.entries:
+                if entry.variant in FSX_VARIANTS and not fsx_available():
+                    continue
                 with self.subTest(variant=entry.variant):
                     seek = Seek(id8(), self.player, "randomdice", color="w", player1=self.player)
                     with patch("utils.select_random_mode_entry", return_value=entry):
@@ -216,7 +227,7 @@ customPiece1 = p:mKmDmA
                     self.assertEqual(response["type"], "new_game")
                     created = self.state.games[response["gameId"]]
                     self.assertEqual(created.variant, entry.variant)
-                    self.assertEqual(created.random_context["poolVersion"], 4)
+                    self.assertEqual(created.random_context["poolVersion"], 7)
                     self.assertIs(created.bplayer, self.opponent)
                     self.assertTrue(created.board.legal_moves())
                     if entry.variant == "fogofwar":
@@ -255,14 +266,124 @@ customPiece1 = p:mKmDmA
                         response = await self.rematch(current, AsyncMock())
 
                     self.assertEqual(response["type"], "new_game")
-                    randbelow.assert_called_once_with(18)
+                    randbelow.assert_called_once_with(27 if fsx_available() else 23)
                     rematch = self.state.games[response["gameId"]]
                     self.assertEqual(rematch.variant, selected.variant)
-                    self.assertEqual(rematch.random_context["poolVersion"], 4)
+                    self.assertEqual(rematch.random_context["poolVersion"], 7)
                     self.assertEqual(rematch.random_context["previousEntryId"], "dice-" + variant)
                     self.assertEqual(current.variant, variant)
                     self.assertEqual(current.random_context["poolVersion"], 3)
                     await rematch.game_ended(self.player, "resign")
+
+    async def test_fsx_computed_ai_is_rejected_before_creating_a_game(self):
+        for entry in RANDOM_DICE_POOL.entries:
+            if entry.variant not in FSX_VARIANTS:
+                continue
+            with self.subTest(variant=entry.variant):
+                previous_games = set(self.state.games)
+                response = await self.ai_challenge_entry("randomdice", entry)
+                self.assertEqual(response["type"], "error")
+                self.assertIn("Random-Mover", response["message"])
+                self.assertEqual(set(self.state.games), previous_games)
+
+    @unittest.skipUnless(fsx_available(), "Requires FSX extension")
+    async def test_direct_fsx_challenges_force_casual_random_mover(self):
+        for variant in ("monster", "rifle-chess", "spell-chess"):
+            for color in ("w", "b"):
+                with self.subTest(variant=variant, color=color):
+                    ws = AsyncMock()
+                    with patch("wsl.send_bot_game_start_unless_streaming", new_callable=AsyncMock):
+                        await handle_create_ai_challenge(
+                            self.state,
+                            ws,
+                            self.player,
+                            {
+                                "type": "create_ai_challenge",
+                                "variant": variant,
+                                "profileid": "Fairy-Stockfish",
+                                "rm": False,
+                                "fen": "",
+                                "color": color,
+                                "minutes": 5,
+                                "increment": 3,
+                                "byoyomiPeriod": 0,
+                                "rated": True,
+                                "chess960": True,
+                                "level": 8,
+                            },
+                        )
+                    response = json.loads(ws.send_str.await_args.args[0])
+                    self.assertEqual(response["type"], "new_game", response)
+                    created = self.state.games[response["gameId"]]
+                    self.assertIs(
+                        created.bplayer if color == "w" else created.wplayer,
+                        self.state.users["Random-Mover"],
+                    )
+                    self.assertEqual(created.rated, CASUAL)
+                    self.assertFalse(created.chess960)
+                    self.assertIsNone(created.random_context)
+                    if variant == "monster":
+                        black_clock = created.clocks_b[-1]
+                        await created.play_move("e2e4")
+                        self.assertEqual(created.board.move_stack, ["e2e4", "0000"])
+                        self.assertEqual(created.board.fen.split()[1], "w")
+                        self.assertEqual(created.clocks_b[-1], black_clock)
+                        self.assertEqual(len(created.get_board()["steps"]), 3)
+                        if color == "w":
+                            pending_fen = created.steps[1]["fen"]
+                            await self.state.db.game.update_one(
+                                {"_id": created.id},
+                                {
+                                    "$set": {
+                                        "m": [created.encode_method("e2e4")],
+                                        "f": pending_fen,
+                                    }
+                                },
+                            )
+                            await created.cancel_clocks_for_eviction()
+                            self.state.games.pop(created.id, None)
+                            created = await load_game(self.state, created.id)
+                            self.assertEqual(created.board.move_stack, ["e2e4", "0000"])
+                            self.assertEqual(created.board.fen.split()[1], "w")
+                        await created.play_move("d2d4")
+                        self.assertEqual(created.board.fen.split()[1], "b")
+                        await created.play_move("e7e5")
+                        await created.play_move("e1e2")
+                        self.assertEqual(created.board.move_stack[-2:], ["e1e2", "0000"])
+                        await created.takeback(created.wplayer)
+                        self.assertEqual(created.board.move_stack, ["e2e4", "0000", "d2d4", "e7e5"])
+                        self.assertNotEqual(created.board.legal_moves(), ["0000"])
+                    else:
+                        for move in ("e2e4", "e7e5", "g1f3", "b8c6"):
+                            await created.play_move(move)
+                    await created.game_ended(self.player, "resign")
+                    self.state.games.pop(created.id, None)
+                    restored = await load_game(self.state, created.id)
+                    self.assertIsNotNone(restored)
+                    self.assertEqual(restored.board.move_stack, created.board.move_stack)
+                    if variant == "monster":
+                        restored.create_steps()
+                        self.assertIn("--", restored.pgn)
+
+    @unittest.skipUnless(fsx_available(), "Requires FSX extension")
+    async def test_spell_game_preserves_compound_moves_after_database_reload(self):
+        entry = next(entry for entry in RANDOM_DICE_POOL.entries if entry.variant == "spell-chess")
+        seek = Seek(id8(), self.player, "randomdice", color="w", player1=self.player)
+        with patch("utils.select_random_mode_entry", return_value=entry):
+            response = await join_seek(self.state, self.opponent, seek)
+        created = self.state.games[response["gameId"]]
+        moves = ["f@e7,e2e4", "a7a6", "g1f3", "a6a5"]
+        for move in moves:
+            await created.play_move(move)
+        expected_fen = created.board.fen
+        await created.game_ended(self.player, "resign")
+        self.state.games.pop(created.id, None)
+        restored = await load_game(self.state, created.id)
+        self.assertIsNotNone(restored)
+        assert restored is not None
+        self.assertEqual(restored.board.move_stack, moves)
+        self.assertEqual(restored.board.fen, expected_fen)
+        self.assertEqual(restored.random_context["mode"], "randomdice")
 
     async def test_dice_reports_unsupported_fog_and_unavailable_alice_without_creating_games(self):
         alice = self.state.users["Alice-Stockfish"]

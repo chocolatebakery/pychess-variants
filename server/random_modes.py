@@ -4,6 +4,8 @@ import secrets
 from dataclasses import dataclass
 from typing import NotRequired, TypedDict
 
+from fsx import FSX_VARIANTS, fsx_available
+
 RANDOM_MODE_WILD29 = "wild29"
 RANDOM_MODE_DICE = "randomdice"
 
@@ -74,7 +76,7 @@ RANDOM_DICE_POOL = RandomModePool(
     mode=RANDOM_MODE_DICE,
     display_name="Random Dice",
     pool_id="random-dice-supported",
-    version=4,
+    version=7,
     entries=(
         RandomModeEntry("dice-atomic", "Atomic", "atomic"),
         RandomModeEntry("dice-orda", "Orda", "orda"),
@@ -94,6 +96,19 @@ RANDOM_DICE_POOL = RandomModePool(
         RandomModeEntry("dice-fogofwar", "Fog of War", "fogofwar"),
         RandomModeEntry("dice-alice", "Alice Chess", "alice"),
         RandomModeEntry("dice-makruk", "Makruk", "makruk"),
+        RandomModeEntry("dice-berolina", "Berolina Chess", "berolina"),
+        RandomModeEntry("dice-extinction", "Extinction Chess", "extinction"),
+        RandomModeEntry("dice-kinglet", "Kinglet", "kinglet"),
+        RandomModeEntry("dice-threekings", "Three Kings", "threekings"),
+        RandomModeEntry("dice-torpedo", "Torpedo Chess", "torpedo"),
+        RandomModeEntry("dice-rifle", "Rifle Chess", "rifle-chess", rules_version="fsx-0.0.88"),
+        RandomModeEntry(
+            "dice-brotherhood", "Brotherhood Chess", "brotherhood", rules_version="fsx-0.0.88"
+        ),
+        RandomModeEntry(
+            "dice-spellchess", "Spell Chess", "spell-chess", rules_version="fsx-0.0.88"
+        ),
+        RandomModeEntry("dice-monster", "Monster Chess", "monster", rules_version="fsx-0.0.88"),
     ),
 )
 
@@ -132,13 +147,16 @@ def previous_entry_id_from_context(context: RandomContext | dict[str, object] | 
 
 def select_random_mode_entry(mode: str, previous_entry_id: str | None = None) -> RandomModeEntry:
     pool = _pool(mode)
+    available = [
+        entry for entry in pool.entries if entry.variant not in FSX_VARIANTS or fsx_available()
+    ]
     candidates = [
         entry
-        for entry in pool.entries
+        for entry in available
         if previous_entry_id is None or entry.entry_id != previous_entry_id
     ]
     if not candidates:
-        candidates = list(pool.entries)
+        candidates = available
     if not candidates:
         raise RandomModeError("Random mode pool has no entries: %s" % mode)
     if any(entry.weight <= 0 for entry in candidates):

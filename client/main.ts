@@ -6,6 +6,7 @@ import './securitySignals';
 import ffishModule, { FairyStockfish } from 'ffish-es6';
 
 import ffishAliceModule from 'ffish-alice-es6';
+import { FSX_VARIANTS, fsxVariantsIni, ffishFsxModule } from './fsx';
 
 import { _, i18n } from './i18n';
 import { aboutView } from './about';
@@ -303,27 +304,15 @@ function start() {
                 dataView === 'paste'
                     ? allVariantsIni(variantsIni)
                     : variantConfigIni(variantsIni, model.variant);
-            if (model['variant'] === 'alice') {
-                const loadModule = ffishAliceModule(
-                    dataView === 'paste' ? ffishModuleOptions(recordImportFfishError) : ffishModuleOptions(),
-                );
-                loadModule.then((loadedModule: any) => {
-                    console.timeEnd('load ffish_alice');
-                    loadedModule.loadVariantConfig(variantIni);
-                    model.ffish = loadedModule;
-                    renderView();
-                });
-            } else {
-                const loadModule = ffishModule(
-                    dataView === 'paste' ? ffishModuleOptions(recordImportFfishError) : ffishModuleOptions(),
-                );
-                loadModule.then((loadedModule: any) => {
+            const isFsx = FSX_VARIANTS.has(model.variant);
+            const factory = isFsx ? ffishFsxModule : model.variant === 'alice' ? ffishAliceModule : ffishModule;
+            factory(dataView === 'paste' ? ffishModuleOptions(recordImportFfishError) : ffishModuleOptions())
+                .then((loadedModule: any) => {
                     console.timeEnd('load ffish');
-                    loadedModule.loadVariantConfig(variantIni);
+                    loadedModule.loadVariantConfig(isFsx ? fsxVariantsIni : variantIni);
                     model.ffish = loadedModule;
                     renderView();
                 });
-            }
         } else {
             renderView();
             if (dataView === 'profile' || dataView === 'level8win') initProfileActionOverflow();

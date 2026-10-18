@@ -22,6 +22,17 @@ from random_modes import (
 
 
 class RandomModesTestCase(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch("random_modes.fsx_available", return_value=True))
+
+    def test_missing_fsx_excludes_only_its_entries(self):
+        with (
+            patch("random_modes.fsx_available", return_value=False),
+            patch("random_modes.secrets.randbelow", return_value=22) as draw,
+        ):
+            self.assertEqual(select_random_mode_entry("randomdice").variant, "torpedo")
+        draw.assert_called_once_with(23)
+
     def test_modes_are_registered(self) -> None:
         self.assertTrue(is_random_mode(RANDOM_MODE_WILD29))
         self.assertTrue(is_random_mode(RANDOM_MODE_DICE))
@@ -165,7 +176,7 @@ class RandomModesTestCase(unittest.TestCase):
             randbelow.assert_not_called()
 
     def test_random_dice_rematch_upgrades_old_pool_context(self) -> None:
-        for version in (1, 2, 3):
+        for version in (1, 2, 3, 4, 5, 6):
             with self.subTest(version=version):
                 old_context: dict[str, object] = {
                     "mode": RANDOM_MODE_DICE,
@@ -177,7 +188,7 @@ class RandomModesTestCase(unittest.TestCase):
                 rematch_context = rematch_context_for_game(old_context, "oldgame")
 
                 assert rematch_context is not None
-                self.assertEqual(rematch_context["poolVersion"], 4)
+                self.assertEqual(rematch_context["poolVersion"], 7)
                 self.assertEqual(rematch_context["previousEntryId"], "dice-chess960")
                 self.assertEqual(old_context["poolVersion"], version)
 
@@ -203,10 +214,19 @@ class RandomModesTestCase(unittest.TestCase):
                 "fogofwar",
                 "alice",
                 "makruk",
+                "berolina",
+                "extinction",
+                "kinglet",
+                "threekings",
+                "torpedo",
+                "rifle-chess",
+                "brotherhood",
+                "spell-chess",
+                "monster",
             },
         )
-        self.assertEqual(len(RANDOM_DICE_POOL.entries), 18)
-        self.assertEqual(len({entry.entry_id for entry in RANDOM_DICE_POOL.entries}), 18)
+        self.assertEqual(len(RANDOM_DICE_POOL.entries), 27)
+        self.assertEqual(len({entry.entry_id for entry in RANDOM_DICE_POOL.entries}), 27)
         self.assertTrue(all(entry.weight == 1 for entry in RANDOM_DICE_POOL.entries))
 
     def test_new_dice_variants_use_native_rules_and_can_make_a_move(self) -> None:
@@ -218,6 +238,11 @@ class RandomModesTestCase(unittest.TestCase):
             "fogofwar",
             "alice",
             "makruk",
+            "berolina",
+            "extinction",
+            "kinglet",
+            "threekings",
+            "torpedo",
         ):
             with self.subTest(variant=variant):
                 board = FairyBoard(variant)

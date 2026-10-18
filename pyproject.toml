@@ -22,6 +22,7 @@ dependencies = [
     "minify-html==0.18.1",
     "pyffish==0.0.90",
     "pyffish-alice==0.0.3",
+    "pyffish-fsx==0.0.88; sys_platform == 'linux'",
     "py4swiss==0.3.1",
     "pymongo==4.18.2",
     "pywebpush==2.5.0",
@@ -52,6 +53,7 @@ dev = [
 
 [tool.ruff]
 line-length = 100
+extend-exclude = ["vendor"]
 # Keep linting on the real runtime target. Formatting is intentionally invoked with
 # `--target-version py313` to preserve 3.13-parseable parenthesized multi-exception clauses.
 target-version = "py314"
@@ -121,3 +123,6 @@ ignore = ["UP031"]
 
 [tool.setuptools]
 packages = []  # Disable package discovery
+
+[tool.uv.sources]
+pyffish-fsx = { path = "vendor/pyffish-fsx" }

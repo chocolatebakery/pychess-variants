@@ -1,5 +1,7 @@
 __pycache__/
 node_modules/
+vendor/pyffish-fsx/build/
+vendor/pyffish-fsx/dist/
 .DS_Store
 templates/docs/
 templates/news/
@@ -15,6 +17,8 @@ static/ffish.js
 static/ffish.wasm
 static/ffish.worker.js
 static/ffish-alice.wasm
+static/ffish-fsx.wasm
+static/ffish-fsx.js
 static/stockfish.js
 static/stockfish.wasm
 static/stockfish.worker.js
@@ -29,6 +33,9 @@ tournament*.json
 *.pgn
 *.txt
 !/Instalar-no-Render.txt
+!/Commit-Changes.txt
+!/vendor/ffish-fsx-es6/Copying.txt
+!/vendor/pyffish-fsx/Copying.txt
 *.mo
 .env
 yarn-error.log

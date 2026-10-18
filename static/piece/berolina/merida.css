@@ -1,0 +1,36 @@
+.berolina piece.p-piece.white {
+    background-image: url('../../images/pieces/berolina/merida/wP.svg');
+}
+.berolina piece.n-piece.white {
+    background-image: url('../../images/pieces/merida/wN.svg');
+}
+.berolina piece.b-piece.white {
+    background-image: url('../../images/pieces/merida/wB.svg');
+}
+.berolina piece.r-piece.white {
+    background-image: url('../../images/pieces/merida/wR.svg');
+}
+.berolina piece.q-piece.white {
+    background-image: url('../../images/pieces/merida/wQ.svg');
+}
+.berolina piece.k-piece.white {
+    background-image: url('../../images/pieces/merida/wK.svg');
+}
+.berolina piece.p-piece.black {
+    background-image: url('../../images/pieces/berolina/merida/bP.svg');
+}
+.berolina piece.n-piece.black {
+    background-image: url('../../images/pieces/merida/bN.svg');
+}
+.berolina piece.b-piece.black {
+    background-image: url('../../images/pieces/merida/bB.svg');
+}
+.berolina piece.r-piece.black {
+    background-image: url('../../images/pieces/merida/bR.svg');
+}
+.berolina piece.q-piece.black {
+    background-image: url('../../images/pieces/merida/bQ.svg');
+}
+.berolina piece.k-piece.black {
+    background-image: url('../../images/pieces/merida/bK.svg');
+}

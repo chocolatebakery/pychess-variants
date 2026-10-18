@@ -175,13 +175,17 @@ describe('round move validation', () => {
         expect(persistPendingMove).not.toHaveBeenCalled();
     });
 
-    test('sends current board positionId with move payload', () => {
+    test.each([
+        ['chess', 'e2e4'], ['rifle-chess', 'e2e4'], ['spell-chess', 'f@e7,e2e4'],
+    ])('sends current board positionId with %s move payload', (variantName, move) => {
         const sent: SentMessage[] = [];
         const persistPendingMove = jest.fn();
         const onMoveSubmitted = jest.fn();
 
         const ctrl = {
             gameId: 'game-position',
+            variant: { name: variantName },
+            chessground: { set: jest.fn() },
             positionId: 'pos-19',
             clearDialog: jest.fn(),
             corr: false,
@@ -198,7 +202,7 @@ describe('round move validation', () => {
             byoyomi: false,
             preaction: false,
             clocktimes: [181000, 179000],
-            ffishBoard: { legalMoves: jest.fn(() => 'e2e4') },
+            ffishBoard: { legalMoves: jest.fn(() => move), push: jest.fn(() => true), pop: jest.fn(), fen: () => 'projected' },
             clearLocalMoveQueueState: jest.fn(),
             doSend: jest.fn((msg: SentMessage) => sent.push(msg)),
             persistPendingMove,
@@ -207,12 +211,12 @@ describe('round move validation', () => {
             ongoingRoundGames: { onMoveSubmitted },
         } as unknown as Record<string, unknown>;
 
-        callRoundMethod(ctrl, 'doSendMove', 'e2e4');
+        callRoundMethod(ctrl, 'doSendMove', move);
 
         expect(persistPendingMove).toHaveBeenCalledWith({
             type: 'move',
             gameId: 'game-position',
-            move: 'e2e4',
+            move,
             clocks: [179000, 181000],
             ply: 20,
             positionId: 'pos-19',
@@ -221,7 +225,7 @@ describe('round move validation', () => {
             {
                 type: 'move',
                 gameId: 'game-position',
-                move: 'e2e4',
+                move,
                 clocks: [179000, 181000],
                 ply: 20,
                 positionId: 'pos-19',

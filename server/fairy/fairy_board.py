@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from const import CATEGORIES
+from fsx import FSX_VARIANTS, fsx_engine, fsx_san
 from variants import catalogued_variant_random_start, is_catalogued_variant
 
 # -*- coding: utf-8 -*-
@@ -50,6 +51,12 @@ MANCHU_R_FEN = "m1bakab1r/9/9/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 
 JIEQI_FEN = "r~n~b~a~ka~b~n~r~/9/1c~5c~1/p~1p~1p~1p~1p~/9/9/P~1P~1P~1P~1P~/1C~5C~1/9/R~N~B~A~KA~B~N~R~ w - - 0 1"
 
 RANDOM_START_VARIANTS = frozenset(("ataxx", "paradigm"))
+
+
+def engine_for_variant(variant: str):
+    if variant in FSX_VARIANTS:
+        return fsx_engine()
+    return sf_alice if variant == "alice" else sf
 
 
 def _normalize_variant_and_chess960(variant: str | None, chess960: bool) -> tuple[str, bool]:
@@ -130,7 +137,7 @@ class FairyBoard:
             _color_from_initial_fen(initial_fen, normalized_variant) if initial_fen else None
         )
         self.variant = modded_variant(normalized_variant, normalized_chess960, initial_fen)
-        self.sf = sf_alice if normalized_variant == "alice" else sf
+        self.sf = engine_for_variant(normalized_variant)
         self.chess960 = normalized_chess960
         self.sfen = False
         self.show_promoted = show_promoted or variant in (
@@ -192,9 +199,10 @@ class FairyBoard:
     @staticmethod
     def start_fen(variant: str | None, chess960=False, disabled_fen=""):
         normalized_variant, normalized_chess960 = _normalize_variant_and_chess960(variant, chess960)
+        engine = engine_for_variant(normalized_variant)
 
         if is_catalogued_variant(normalized_variant):
-            default_fen = sf.start_fen(normalized_variant)
+            default_fen = engine.start_fen(normalized_variant)
             if not normalized_chess960 or not catalogued_variant_random_start(normalized_variant):
                 return default_fen
             # Only replace back ranks and castling rights; keep the variant's
@@ -212,7 +220,7 @@ class FairyBoard:
                 new_fen = " ".join(fields)
                 if (
                     fields[0] != disabled_fen.split(" ", 1)[0]
-                    and sf.validate_fen(new_fen, normalized_variant, True) == FEN_OK
+                    and engine.validate_fen(new_fen, normalized_variant, True) == FEN_OK
                 ):
                     return new_fen
             raise ValueError(f"No valid randomized start for {normalized_variant}")
@@ -221,10 +229,8 @@ class FairyBoard:
             new_fen = FairyBoard.shuffle_start(normalized_variant)
             while new_fen == disabled_fen:
                 new_fen = FairyBoard.shuffle_start(normalized_variant)
-        elif normalized_variant == "alice":
-            new_fen = sf_alice.start_fen("alice")
         else:
-            new_fen = sf.start_fen(normalized_variant)
+            new_fen = engine.start_fen(normalized_variant)
 
         if normalized_variant in ("bughouse", "supply", "makbug"):
             return new_fen + " | " + new_fen
@@ -342,7 +348,8 @@ class FairyBoard:
             self.jieqi_covered_pieces = jieqi_mapping
 
     def get_san(self, move):
-        return self.sf.get_san(self.variant, self.fen, move, self.chess960, self.notation)
+        san = self.sf.get_san(self.variant, self.fen, move, self.chess960, self.notation)
+        return fsx_san(self.variant, move, san)
 
     def has_legal_move(self):
         if self.legal_moves_need_history:
@@ -633,18 +640,19 @@ def get_fog_fen(fen, persp_color):
 
 def get_san_moves(variant, fen, mlist, chess960, notation):
     normalized_variant, normalized_chess960 = _normalize_variant_and_chess960(variant, chess960)
-    if normalized_variant == "alice":
-        return sf_alice.get_san_moves(normalized_variant, fen, mlist, normalized_chess960, notation)
-    else:
-        return sf.get_san_moves(normalized_variant, fen, mlist, normalized_chess960, notation)
+    sans = engine_for_variant(normalized_variant).get_san_moves(
+        normalized_variant, fen, mlist, normalized_chess960, notation
+    )
+    if normalized_variant in FSX_VARIANTS:
+        return [fsx_san(normalized_variant, move, san) for move, san in zip(mlist, sans)]
+    return sans
 
 
 def validate_fen(fen, variant, chess960):
     normalized_variant, normalized_chess960 = _normalize_variant_and_chess960(variant, chess960)
-    if normalized_variant == "alice":
-        return sf_alice.validate_fen(fen, normalized_variant, normalized_chess960)
-    else:
-        return sf.validate_fen(fen, normalized_variant, normalized_chess960)
+    return engine_for_variant(normalized_variant).validate_fen(
+        fen, normalized_variant, normalized_chess960
+    )
 
 
 if __name__ == "__main__":

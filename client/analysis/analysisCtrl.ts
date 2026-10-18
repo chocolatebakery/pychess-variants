@@ -34,6 +34,8 @@ import { createWebsocket } from '@/socket/webSocketUtils';
 import { setPocketRowCssVars } from '../pocketRow';
 import { updateCount, updatePoint } from '../info';
 import { fogFen, variantConfigIni } from '../variants';
+import { FSX_VARIANTS } from '../fsx';
+import { fsxMoveSan } from '../spellChess';
 import { hideKeyboardHelp, isKeyboardHelpShortcut, showKeyboardHelp } from './keyboardHelp';
 import { PvHoverPreview } from './pvHoverPreview';
 import { alertDialog } from '../alertDialog';
@@ -682,8 +684,16 @@ export class AnalysisController extends GameController {
         return this.analysisContext.capabilities.localAnalysisAllowed && hasActiveEligibleLiveGame();
     }
 
+    canUseSpells(): boolean {
+        return !!this.analysisContext?.capabilities.editableTree && !this.ongoing;
+    }
+
+    spellColor(): cg.Color {
+        return this.turnColor;
+    }
+
     isLocalAnalysisAllowedByExtension(): boolean {
-        return this.analysisExtension?.allowComputerSearch?.() !== false;
+        return !FSX_VARIANTS.has(this.variant.name) && this.analysisExtension?.allowComputerSearch?.() !== false;
     }
 
     refreshLocalAnalysisAvailabilityForAntiCheat() {
@@ -992,7 +1002,7 @@ export class AnalysisController extends GameController {
             updateMovelist(this, true, false);
 
             if (this.steps[0].analysis === undefined) {
-                if (this.analysisContext.capabilities.serverAnalysisRequest) {
+                if (this.analysisContext.capabilities.serverAnalysisRequest && !FSX_VARIANTS.has(this.variant.name)) {
                     const el = document.getElementById('request-analysis') as HTMLElement;
                     el.style.display = 'flex';
                     patch(
@@ -1091,7 +1101,7 @@ export class AnalysisController extends GameController {
         }
 
         if (line.startsWith('option name UCI_Variant')) {
-            if (!line.includes(this.engineVariant)) {
+            if (FSX_VARIANTS.has(this.variant.name) || !line.includes(this.engineVariant)) {
                 console.log('This variant is NOT supported by Fairy-Stockfish!');
                 return;
             } else {
@@ -1781,7 +1791,7 @@ export class AnalysisController extends GameController {
                     moveCounter = whiteMove ? Math.ceil((ply + 1) / 2) + '.' : '';
                 }
                 if (sanSANneeded) {
-                    this.steps[ply]['sanSAN'] = this.ffishBoard.sanMove(this.steps[ply].move!);
+                    this.steps[ply]['sanSAN'] = fsxMoveSan(this.variant.name, this.steps[ply].move!, this.ffishBoard.sanMove(this.steps[ply].move!));
                     this.ffishBoard.push(this.steps[ply].move!);
                 }
                 moves.push(moveCounter + this.steps[ply]['sanSAN']);
@@ -1829,8 +1839,8 @@ export class AnalysisController extends GameController {
             return false;
         }
 
-        const san = this.ffishBoard.sanMove(move, this.notationAsObject);
-        const sanSAN = this.ffishBoard.sanMove(move);
+        const san = fsxMoveSan(this.variant.name, move, this.ffishBoard.sanMove(move, this.notationAsObject));
+        const sanSAN = fsxMoveSan(this.variant.name, move, this.ffishBoard.sanMove(move));
 
         // Instead of sending moves to the server we can get new FEN and dests from ffishjs
         this.ffishBoard.push(move);

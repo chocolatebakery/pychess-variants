@@ -221,6 +221,23 @@ export const BOARD_FAMILIES: Record<string, BoardFamily> = {
     },
 };
 
+// Private-use keys rendered with SVG masks in random-icons.css, not the icon font.
+export const SVG_VARIANT_ICONS: Record<string, string> = {
+    knightmate: '\ue910',
+    atomar: '\ue911',
+    berolina: '\ue912',
+    extinction: '\ue913',
+    kinglet: '\ue914',
+    threekings: '\ue915',
+    torpedo: '\ue916',
+    losers: '\ue917',
+    'rifle-chess': '\ue918',
+    'spell-chess': '\ue919',
+    brotherhood: '\ue91a',
+    randomdice: '\ue91b',
+    monster: '\ue91c',
+};
+
 export const PIECE_FAMILIES: Record<string, PieceFamily> = {
     amazons: { pieceCSS: ['classic', 'arrow', 'disguised'], wallCSS: ['classic', 'arrow'] },
     paradigm: { pieceCSS: ["paradigm0", "paradigm1", "paradigm2", "paradigm3", "disguised"] },
@@ -241,6 +258,8 @@ export const PIECE_FAMILIES: Record<string, PieceFamily> = {
         ],
     },
     knightmate: { pieceCSS: ['standard'] },
+    berolina: { pieceCSS: ['merida', 'disguised'] },
+    spellchess: { pieceCSS: ['merida', 'disguised'] },
     capa: { pieceCSS: ['capa0', 'capa1', 'capa2', 'capa3', 'capa4', 'capa5', 'disguised'] },
     centaur: { pieceCSS: ['centaur0', 'centaur1', 'disguised'] },
     dragon: { pieceCSS: ['dragon1', 'dragon0', 'dragon2', 'disguised'] },
@@ -880,11 +899,43 @@ export const VARIANTS: Record<string, Variant> = {
         displayName: 'Random Dice',
         tooltip: 'Randomly selects one Random Dice variant when the game starts.',
         startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-        icon: 'D',
+        icon: SVG_VARIANT_ICONS.randomdice,
         boardFamily: 'standard8x8',
         pieceFamily: 'standard',
         pieceRow: ['k', 'q', 'r', 'b', 'n', 'p'],
         ratingEnabled: false,
+        rules: { enPassant: true },
+    }),
+    'rifle-chess': variant({
+        name: 'rifle-chess', displayName: 'Rifle Chess',
+        tooltip: 'Capturing pieces remain on their starting square.',
+        startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        icon: SVG_VARIANT_ICONS['rifle-chess'], boardFamily: 'standard8x8', pieceFamily: 'standard',
+        pieceRow: ['k', 'q', 'r', 'b', 'n', 'p'], ratingEnabled: false, aiDisabled: true,
+        rules: { enPassant: true },
+    }),
+    monster: variant({
+        name: 'monster', displayName: 'Monster Chess',
+        tooltip: 'White moves twice per turn with a king and four pawns. Capture the opposing king to win.',
+        startFen: 'rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1',
+        icon: SVG_VARIANT_ICONS.monster, boardFamily: 'standard8x8', pieceFamily: 'standard',
+        pieceRow: ['k', 'q', 'r', 'b', 'n', 'p'], ratingEnabled: false, aiDisabled: true,
+        rules: { enPassant: true },
+    }),
+    brotherhood: variant({
+        name: 'brotherhood', displayName: 'Brotherhood Chess',
+        tooltip: 'Pieces cannot capture another piece of the same type, except kings.',
+        startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        icon: SVG_VARIANT_ICONS.brotherhood, boardFamily: 'standard8x8', pieceFamily: 'standard',
+        pieceRow: ['k', 'q', 'r', 'b', 'n', 'p'], ratingEnabled: false, aiDisabled: true,
+        rules: { enPassant: true },
+    }),
+    'spell-chess': variant({
+        name: 'spell-chess', displayName: 'Spell Chess',
+        tooltip: 'Use Freeze and Jump spells alongside a piece move. Capture the opposing king to win.',
+        startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[JJFFFFFjjfffff] w KQkq - 0 1',
+        icon: SVG_VARIANT_ICONS['spell-chess'], boardFamily: 'standard8x8', pieceFamily: 'spellchess',
+        pieceRow: ['k', 'q', 'r', 'b', 'n', 'p'], ratingEnabled: false, aiDisabled: true,
         rules: { enPassant: true },
     }),
     bughouse: variant({
@@ -1030,7 +1081,7 @@ export const VARIANTS: Record<string, Variant> = {
         displayName: 'losers chess',
         tooltip: 'Lose all your pieces, or become unable to move, to win.',
         startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-        icon: 'L',
+        icon: SVG_VARIANT_ICONS.losers,
         boardFamily: 'standard8x8',
         pieceFamily: 'standard',
         pieceRow: ['k', 'q', 'r', 'b', 'n', 'p'],
@@ -2098,6 +2149,15 @@ const RANDOM_MODE_RESULT_VARIANT_KEYS = new Set<string>([
     'fogofwar',
     'alice',
     'makruk',
+    'berolina',
+    'extinction',
+    'kinglet',
+    'threekings',
+    'torpedo',
+    'rifle-chess',
+    'brotherhood',
+    'spell-chess',
+    'monster',
     'shogi',
     'xiangqi',
     'janggi',
@@ -2786,12 +2846,17 @@ function cataloguedCompatiblePieceSource(
         };
     }
 
-    if (meta.source === 'fairy-stockfish-builtin' && meta.fsfBuiltinVariant === 'knightmate') {
-        return {
-            pieceFamily: 'knightmate',
+    if (meta.source === 'fairy-stockfish-builtin') {
+        const family = {
+            knightmate: 'knightmate',
+            berolina: 'berolina',
+            'spell-chess': 'spellchess',
+        }[meta.fsfBuiltinVariant ?? ''];
+        if (family) return {
+            pieceFamily: family,
             pieceCSSExclude: [],
             variantName: meta.name,
-            roleCount: 6,
+            roleCount: cataloguedNeededPieceLetters(meta).size,
         };
     }
 
@@ -2890,7 +2955,7 @@ export function registerCataloguedVariant(meta: CataloguedVariantClientDocument)
         nnueFingerprint: meta.nnueFingerprint,
         ratingEnabled: false,
         startFen: meta.startFen,
-        icon: CATALOGUED_VARIANT_ICON,
+        icon: SVG_VARIANT_ICONS[meta.name] ?? CATALOGUED_VARIANT_ICON,
         boardFamily,
         hasBoard: !!meta.hasBoard,
         boardRevision: meta.boardRevision,

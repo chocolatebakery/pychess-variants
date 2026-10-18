@@ -6,7 +6,10 @@ from unittest.mock import AsyncMock, patch
 import test_logger
 from aiohttp.test_utils import AioHTTPTestCase
 from compress import encode_move_standard
+from fairy import FairyBoard
+from fsx import fsx_available
 from mongomock_motor import AsyncMongoMockClient
+from pychess_global_app_state_utils import get_app_state
 from utils import _encode_import_moves
 
 from server import make_app
@@ -103,6 +106,37 @@ class ImportGameCleanupTestCase(AioHTTPTestCase):
 
         self.assertEqual(resp.status, 200)
         self.assertEqual(await resp.json(), {"error": "Missing username."})
+
+    @unittest.skipUnless(fsx_available(), "Requires FSX extension")
+    async def test_import_uses_fsx_and_preserves_spell_tokens(self):
+        for variant in ("rifle-chess", "brotherhood", "spell-chess"):
+            with self.subTest(variant=variant):
+                board = FairyBoard(variant)
+                move = "f@e7,e2e4" if variant == "spell-chess" else "e2e4"
+                initial = board.fen
+                board.push(move)
+                resp = await self.client.post(
+                    "/import",
+                    data={
+                        "username": "Importer",
+                        "White": "Importer",
+                        "Black": "Opponent",
+                        "Variant": variant,
+                        "FEN": initial,
+                        "Result": "*",
+                        "Status": "-1",
+                        "final_fen": board.fen,
+                        "moves": move,
+                    },
+                )
+                body = await resp.json()
+                self.assertIn("gameId", body)
+                state = get_app_state(self.app)
+                document = await state.db.game.find_one({"_id": body["gameId"]})
+                self.assertEqual(document["v"], variant)
+                self.assertEqual(document["f"], board.fen)
+                if variant == "spell-chess":
+                    self.assertEqual(document["m"], [move])
 
     async def test_import_bpgn_rejects_missing_pgn(self):
         resp = await self.client.post("/import_bpgn", data={})

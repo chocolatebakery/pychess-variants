@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14"
 
 [[package]]
@@ -854,6 +854,7 @@ dependencies = [
     { name = "py4swiss" },
     { name = "pyffish" },
     { name = "pyffish-alice" },
+    { name = "pyffish-fsx", marker = "sys_platform == 'linux'" },
     { name = "pymongo" },
     { name = "pyopenssl" },
     { name = "python-gettext" },
@@ -904,6 +905,7 @@ requires-dist = [
     { name = "py4swiss", specifier = "==0.3.1" },
     { name = "pyffish", specifier = "==0.0.90" },
     { name = "pyffish-alice", specifier = "==0.0.3" },
+    { name = "pyffish-fsx", marker = "sys_platform == 'linux'", directory = "vendor/pyffish-fsx" },
     { name = "pymongo", specifier = "==4.18.2" },
     { name = "pyopenssl", specifier = "==26.4.0" },
     { name = "pyrefly", marker = "extra == 'dev'", specifier = "==1.3.2" },
@@ -1028,6 +1030,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/eb/00/e03cb351485bf2e476528cfc6cbf4a448d9538973bf72cdcb25e88188bda/pyffish_alice-0.0.3-cp314-cp314t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:cd0e8907a9cdfddd30614ad09907dca1dcd10923b13bccd98e96f38e472526da", size = 5556268, upload-time = "2026-06-26T11:28:05.987Z" },
     { url = "https://files.pythonhosted.org/packages/1a/c4/901c9c28ae29f1efe4232d0813b928d3a03c5df0c931c13f5fa99cae5cb7/pyffish_alice-0.0.3-cp314-cp314t-win_amd64.whl", hash = "sha256:7e2f98dc422311bf7cd61b8026c73e59181623dd5d86b99810dfa74c697b2f56", size = 583387, upload-time = "2026-06-26T11:28:07.615Z" },
 ]
+
+[[package]]
+name = "pyffish-fsx"
+version = "0.0.88"
+source = { directory = "vendor/pyffish-fsx" }
 
 [[package]]
 name = "pygments"

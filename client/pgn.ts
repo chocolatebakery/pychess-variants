@@ -1,5 +1,6 @@
 import type { FairyStockfish } from 'ffish-es6';
 import { isCataloguedVariant, VARIANTS } from './variants';
+import { fsxMoveSan, splitSpellMove } from './spellChess';
 
 const FEN_VALIDATION_ERRORS: Record<number, string> = {
     [-14]: 'Invalid counting rule field',
@@ -105,6 +106,12 @@ const PGN_VARIANT_ALIASES: Readonly<Record<string, string>> = Object.freeze({
     'three check': '3check',
     threecheck: '3check',
     'racing kings': 'racingkings',
+    'rifle chess': 'rifle-chess',
+    riflechess: 'rifle-chess',
+    'spell chess': 'spell-chess',
+    spellchess: 'spell-chess',
+    'brotherhood chess': 'brotherhood',
+    'monster chess': 'monster',
 });
 
 export function parsePgnVariantTag(rawVariant: string): PgnVariantInfo {
@@ -148,6 +155,7 @@ export interface PgnMoveToken {
 export interface PgnReplayBoard {
     legalMoves(): string;
     sanMove(move: string): string;
+    variant?(): string;
 }
 
 function normalizedPgnSan(value: string): string {
@@ -175,11 +183,22 @@ export function resolvePgnMove(
 
     const targetSan = normalizedPgnSan(node.san);
     if (!targetSan) throw new Error(`Missing move token at ${location}.`);
-    const candidates = board
-        .legalMoves()
-        .split(/\s+/)
-        .filter(Boolean)
-        .map(move => ({ move, san: board.sanMove(move) }));
+    const variant = board.variant?.() ?? '';
+    if (variant === 'monster' && node.san === '--' && board.legalMoves().split(' ').includes('0000')) {
+        return { move: '0000', san: '--' };
+    }
+    let legalMoves = board.legalMoves().split(/\s+/).filter(Boolean);
+    if (variant === 'spell-chess') {
+        if (legalMoves.includes(targetSan)) {
+            return { move: targetSan, san: fsxMoveSan(variant, targetSan, board.sanMove(targetSan)) };
+        }
+        const wanted = splitSpellMove(targetSan).cast;
+        legalMoves = legalMoves.filter(move => {
+            const cast = splitSpellMove(move).cast;
+            return wanted ? cast?.spell === wanted.spell && cast.square === wanted.square : !cast;
+        });
+    }
+    const candidates = legalMoves.map(move => ({ move, san: fsxMoveSan(variant, move, board.sanMove(move)) }));
     let matching = candidates.filter(candidate => normalizedPgnSan(candidate.san) === targetSan);
     if (!matching.length) {
         // External PGNs are not always consistent with Fairy-Stockfish about

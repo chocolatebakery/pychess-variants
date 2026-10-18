@@ -1,0 +1,12 @@
+{
+  "name": "ffish-fsx-es6",
+  "version": "0.7.8-fsx.1",
+  "private": true,
+  "description": "",
+  "main": "ffish-fsx.js",
+  "keywords": [],
+  "author": "",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "types": "ffish.d.ts"
+}

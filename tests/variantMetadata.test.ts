@@ -10,6 +10,7 @@ import {
     isRandomModeOrResultVariant,
     isRandomModeVariant,
     registerCataloguedVariant,
+    SVG_VARIANT_ICONS,
     unregisterCataloguedVariant,
     VARIANTS,
     variants,
@@ -60,6 +61,49 @@ test('Atomar uses its own engine rules and Atomic artwork as a Dice result', () 
         expect(isRandomModeVariant('atomar')).toBe(false);
     } finally {
         unregisterCataloguedVariant('atomar');
+    }
+});
+
+test.each([
+    ['berolina', '', ['q', 'r', 'b', 'n'], 'berolina'],
+    ['extinction', '', ['k', 'q', 'r', 'b', 'n'], 'standard'],
+    ['kinglet', 'extinction', ['k'], 'standard'],
+    ['threekings', '', ['q', 'r', 'b', 'n'], 'standard'],
+    ['torpedo', '', ['q', 'r', 'b', 'n'], 'standard'],
+] as const)('new Dice result %s keeps native roles, promotion and piece artwork', (name, baseVariant, promotionOrder, pieceFamily) => {
+    registerCataloguedVariant({
+        name,
+        displayName: name,
+        source: 'fairy-stockfish-builtin',
+        fsfBuiltinVariant: name,
+        baseVariant,
+        clientVariant: 'chess',
+        ini: '',
+        startFen: name === 'threekings'
+            ? 'knbqkbnk/pppppppp/8/8/8/8/PPPPPPPP/KNBQKBNK w - - 0 1'
+            : VARIANTS.chess.startFen,
+        width: 8,
+        height: 8,
+        pieces: name === 'threekings' ? ['p', 'n', 'b', 'q', 'k'] : ['p', 'n', 'b', 'r', 'q', 'k'],
+        kingRoles: ['k'],
+        promotionRoles: ['p'],
+        promotionOrder: [...promotionOrder],
+        ...(name === 'berolina' ? { betzaPieces: { p: 'mfFcfeWimfnA' } } : {}),
+    });
+    try {
+        const variant = VARIANTS[name];
+        expect(isRandomModeOrResultVariant(name)).toBe(true);
+        expect(variant.board.dimensions).toEqual({ width: 8, height: 8 });
+        expect(variant.pieceFamily).toBe(pieceFamily);
+        expect(variant.icon()).toBe(SVG_VARIANT_ICONS[name]);
+        expect(variant.promotion.order).toEqual(promotionOrder);
+        expect(isRandomModeVariant(name)).toBe(false);
+        for (const mode of ['createGame', 'playAI']) {
+            const disabled = disabledVariantsForCreateMode(mode, '', false);
+            expect(variants.filter(key => !disabled.includes(key))).toEqual(['wild29', 'randomdice']);
+        }
+    } finally {
+        unregisterCataloguedVariant(name);
     }
 });
 

@@ -56,7 +56,7 @@ FISHNET_ACTIVITY_TIMEOUT = 10 * 60.0
 # Variants in this set require an explicitly advertised optional worker engine.
 # Older fairyfishnet versions advertise no capabilities and therefore remain
 # eligible for every ordinary Fairy-Stockfish variant, but never for Alice.
-OPTIONAL_FISHNET_VARIANTS = frozenset(("alice",))
+OPTIONAL_FISHNET_VARIANTS = frozenset(("alice", "rifle-chess", "brotherhood", "spell-chess"))
 
 
 def fishnet_variant_requires_capability(variant: str) -> bool:

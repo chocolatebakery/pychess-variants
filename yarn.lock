@@ -2100,6 +2100,9 @@ ffish-es6@^0.7.10:
   resolved "https://registry.yarnpkg.com/ffish-es6/-/ffish-es6-0.7.10.tgz#5b9707638adce63cca0b855515aa6bdb01b4bb0c"
   integrity sha512-SxQspEQNB6Fu5GEtf6Pb1V1ZZHi1PHgq/p0gp9Y/6zHD7MqqjTmSFFzzBhZMJSFg+1XPF+xYgDF77TAUe6Jy2g==
 
+"ffish-fsx-es6@file:vendor/ffish-fsx-es6":
+  version "0.7.8-fsx.1"
+
 fill-range@^7.1.1:
   version "7.1.1"
   resolved "https://registry.yarnpkg.com/fill-range/-/fill-range-7.1.1.tgz#44265d3cac07e3ea7dc247516380643754a05292"

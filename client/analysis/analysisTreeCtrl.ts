@@ -1,6 +1,7 @@
 import * as Mousetrap from 'mousetrap';
 
 import { copyTextToClipboard } from '../clipboard';
+import { fsxMoveSan } from '../spellChess';
 import { Step } from '../messages';
 import { updateMovelist } from '../movelist';
 import {
@@ -420,7 +421,7 @@ export class AnalysisTreeController {
             nodes.forEach(node => {
                 if (node.step.sanSAN === undefined && node.step.move !== undefined) {
                     this.ctrl.ffishBoard.setFen(parentFen);
-                    node.step.sanSAN = this.ctrl.ffishBoard.sanMove(node.step.move);
+                    node.step.sanSAN = fsxMoveSan(this.ctrl.variant.name, node.step.move, this.ctrl.ffishBoard.sanMove(node.step.move));
                 }
                 visit(node.step.fen, node.children);
             });

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from itertools import product
 from string import ascii_uppercase
 
@@ -174,6 +175,26 @@ def encode_move_standard(move):
     if len(move) >= 4 and move[0] == "+" and move[2] == "@":
         return chr(M2C[move[0:2]]) + chr(M2C[move[3:5]]) + move[5:]
     return chr(M2C[move[0:2]]) + chr(M2C[move[2:4]]) + move[4:]
+
+
+def encode_move_spell(move: str) -> str:
+    # Spell prefixes use lowercase potion drops and precede the ordinary move.
+    # Preserve the complete compound token without the historical square codec.
+    if not re.fullmatch(r"(?:[fj]@[a-h][1-8],)?[a-h][1-8][a-h][1-8][qrbn]?", move):
+        raise ValueError("Invalid Spell Chess move: %s" % move)
+    return move
+
+
+def encode_move_monster(move: str) -> str:
+    return "0000" if move == "0000" else encode_move_standard(move)
+
+
+def decode_move_monster(move: str) -> str:
+    return "0000" if move == "0000" else decode_move_standard(move)
+
+
+def decode_move_spell(move: str) -> str:
+    return encode_move_spell(move)
 
 
 def encode_move_extended(move):

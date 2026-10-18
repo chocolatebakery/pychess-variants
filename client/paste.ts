@@ -12,6 +12,7 @@ import { PyChessModel } from './types';
 import { extractPgnTags, parsePgnVariantTag, resolvePgnMove, validatePgnFenTag } from './pgn';
 import { importGameBugH } from '@/two-board/paste';
 import { parseFirstPgnGame, type ParsedPgnMove } from './pgnParser';
+import { FSX_VARIANTS, ffishFsxModule, fsxVariantsIni } from './fsx';
 
 const BRAINKING_SITE = '[Site "BrainKing.com (Prague, Czech Republic)"]';
 const EMBASSY_FEN = '[FEN "rnbqkmcbnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNBQKMCBNR w KQkq - 0 1"]';
@@ -24,7 +25,7 @@ export function recordImportFfishError(text: string): void {
 export function pasteView(model: PyChessModel): VNode[] {
     const ffish: FairyStockfish = model.ffish;
 
-    const importGame = (model: PyChessModel, ffish: any) => {
+    const importGame = async (model: PyChessModel, ffish: any) => {
         const e = document.getElementById('pgnpaste') as HTMLInputElement;
         //console.log('PGN:', e.value);
         let pgn = e.value;
@@ -125,6 +126,10 @@ export function pasteView(model: PyChessModel): VNode[] {
 
                     const variantInfo = parsePgnVariantTag(game.tags['Variant'] ?? 'chess');
                     variant = variantInfo.variant;
+                    if (FSX_VARIANTS.has(variant)) {
+                        ffish = await ffishFsxModule();
+                        ffish.loadVariantConfig(fsxVariantsIni);
+                    }
 
                     if (variant === 'alice') {
                         // TODO
@@ -175,6 +180,7 @@ export function pasteView(model: PyChessModel): VNode[] {
                     Object.entries(game.tags).forEach(([tag, value]) => {
                         FD.append(tag, value);
                     });
+                    if (FSX_VARIANTS.has(variant)) FD.set('Variant', variant);
                     FD.append('moves', mainlineMoves.join(' '));
                     FD.append('final_fen', board.fen());
                     FD.append('username', model['username']);

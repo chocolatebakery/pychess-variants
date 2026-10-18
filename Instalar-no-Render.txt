@@ -84,11 +84,13 @@ Preenche os campos:
 O script de build instala as dependencias Python e JavaScript, copia os ficheiros
 WASM e compila o frontend e os documentos. Nao precisas de um segundo servico
 para o frontend: este servidor tambem fornece os ficheiros static/.
+Primeiro instala ./vendor/pyffish-fsx e so depois a aplicacao. O pip nao le
+[tool.uv.sources], por isso nao basta executar apenas pip3 install . para FSX.
 
 O build existente usa yarn dev. Para gerar JavaScript de producao minificado,
 podes usar em alternativa este Build Command completo, numa unica linha:
 
-  pip3 install . && yarn install --frozen-lockfile --production=false && yarn prod && yarn md
+  pip3 install ./vendor/pyffish-fsx && pip3 install . && yarn install --frozen-lockfile --production=false && yarn prod && yarn md
 
 O --production=false instala tambem as ferramentas necessarias para o build.
 Se usares bash render-build.sh, deixa NODE_ENV por definir para nao as excluir.
@@ -246,10 +248,12 @@ Jogar contra a AI (Wild 29 e Random Dice):
   explicitamente Random-Mover no dialogo para jogar sem worker; esse bot escolhe
   lances legais ao acaso, nao calcula como Fairy-Stockfish.
 
-  O Random Dice inclui 18 variantes, com pesos iguais:
+  O Random Dice inclui 27 variantes quando FSX esta instalado, com pesos iguais:
     Atomic, Orda, Losers, Three-check, King of the Hill, Chess960, Crazyhouse,
     Horde, Seirawan Chess, Capablanca Chess, Knightmate, Duck Chess, Hoppel-Poppel,
-    Atomar, Racing Kings, Fog of War, Alice Chess e Makruk.
+    Atomar, Racing Kings, Fog of War, Alice Chess, Makruk, Berolina Chess,
+    Extinction Chess, Kinglet, Three Kings, Torpedo Chess, Rifle Chess,
+    Brotherhood, Spell Chess e Monster Chess.
   Wild 29 mantem o seu pool ICC e Atomic com xeques.
 
   O sorteio das variantes usa secrets.randbelow(), com a fonte de aleatoriedade
@@ -261,8 +265,18 @@ Jogar contra a AI (Wild 29 e Random Dice):
   Alice usa dois planos de 8x8.
   O controlo de tempo escolhido no Dice mantem-se mesmo nestas variantes.
 
+  Berolina, Extinction, Kinglet, Three Kings e Torpedo continuam no motor oficial.
+  Rifle, Brotherhood, Spell Chess e Monster Chess usam o terceiro par separado FSX.
+  Em Linux, uv sync --frozen compila vendor/pyffish-fsx automaticamente; o build
+  precisa de C++17 e headers Python. Publica a pasta vendor, os locks e
+  variants-fsx.ini. Nao precisas de uma ENV FSX adicional.
+  Consulta FSX-no-Site.md para os comandos e limites. Sem pyffish_fsx instalado,
+  o sorteio fica com as 23 entradas anteriores, sem simular regras FSX no oficial.
+
   Se sair Fog of War contra Fairy-Stockfish, o site mostra um aviso, pois nao
   existe suporte nessa AI. Random-Mover pode jogar todas as variantes do Dice.
+  As quatro variantes FSX tambem exigem humano ou Random-Mover por enquanto;
+  o worker Fairy-Stockfish normal nao calcula com essas regras.
   Alice contra AI precisa de um worker que anuncie suporte a Alice e mantenha
   Alice-Stockfish online; o worker Fairy-Stockfish normal nao basta. Tambem e
   necessaria a conta de bot Alice-Stockfish na base (title: "BOT"), carregada

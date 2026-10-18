@@ -14,6 +14,7 @@ from auto_pair import (
 )
 from const import AI_OFFLINE_MESSAGE, STARTED, SYSTEM_USER
 from fishnet import has_available_fishnet_worker
+from fsx import FSX_VARIANTS, fsx_available
 from header_challenges import (
     broadcast_challenge_state,
     challenge_participants,
@@ -314,6 +315,15 @@ async def handle_create_ai_challenge(
 
     variant = data["variant"]
     random_mode = is_random_mode(variant)
+    if variant in FSX_VARIANTS and not fsx_available():
+        await ws_send_json(
+            ws,
+            {
+                "type": "error",
+                "message": "FSX is not installed. Run the site in Linux/WSL with uv sync.",
+            },
+        )
+        return
     profileid = data["profileid"]
     if random_mode and profileid not in ("Fairy-Stockfish", "Random-Mover"):
         await ws_send_json(ws, {"type": "error", "message": BOT_UNSUPPORTED_VARIANT_MESSAGE})
@@ -330,7 +340,8 @@ async def handle_create_ai_challenge(
         return
 
     force_random_mover = (
-        variant in UNSUPPORTED_FSF_AI_VARIANTS
+        variant in FSX_VARIANTS
+        or variant in UNSUPPORTED_FSF_AI_VARIANTS
         or data["rm"]
         or profileid == "Random-Mover"
         or (engine is None)
@@ -368,7 +379,7 @@ async def handle_create_ai_challenge(
         level=0 if force_random_mover else data["level"],
         player1=user,
         rated=False,
-        chess960=data["chess960"],
+        chess960=False if variant in FSX_VARIANTS else data["chess960"],
     )
     log.debug("adding seek: %s" % seek)
 

@@ -614,7 +614,12 @@ class Game:
         await self.app_state.db.game.update_one({"_id": self.id}, {"$set": new_data})
 
     async def play_move(
-        self, move: str, clocks: ClockValues | None = None, ply: int | None = None
+        self,
+        move: str,
+        clocks: ClockValues | None = None,
+        ply: int | None = None,
+        *,
+        automatic_pass: bool = False,
     ) -> None:
         self.stopwatch.stop()
 
@@ -655,9 +660,11 @@ class Game:
         cur_time = monotonic()
 
         # BOT players doesn't send times used for moves
-        if self.bot_game:
+        if automatic_pass:
+            clocks = list(self.clocks)
+        elif self.bot_game or self.variant == "monster":
             movetime = self.authoritative_clock_elapsed_ms() if self.board.ply >= 2 else 0
-            if cur_player.bot and self.board.ply >= 2:
+            if (cur_player.bot or self.variant == "monster") and self.board.ply >= 2:
                 if self.byoyomi:
                     if self.overtime:
                         clocks[cur_color] = self.inc * 1000  # pyrefly: ignore[unsupported-operation]
@@ -790,6 +797,15 @@ class Game:
                 await self.save_game()
                 if self.corr:
                     await opp_player.notify_game_end(self)
+
+        if (
+            self.variant == "monster"
+            and self.status <= STARTED
+            and self.board.legal_moves() == ["0000"]
+        ):
+            # FSX represents White's double turn as W move, forced B pass, W move.
+            # Keep the pass in storage/replays, but never ask a player or bot for it.
+            await self.play_move("0000", automatic_pass=True)
 
     async def save_move(
         self,
@@ -2056,6 +2072,8 @@ class Game:
         # log.debug("create_steps() OK")
 
     def get_board(self, full: bool = False, persp_color: int | None = None) -> GameBoardResponse:
+        # One submitted Monster move can add two plies; send both to every viewer.
+        full = full or self.variant == "monster"
         if len(self.board.move_stack) > 0 and len(self.steps) == 1:
             self.create_steps()
 
@@ -2221,6 +2239,20 @@ class Game:
         self.stopwatch.stop()
         turn_player = self.bplayer if self.board.color == BLACK else self.wplayer
         plies = 2 if requester.username == turn_player.username else 1
+        if self.variant == "monster":
+            requester_color = "white" if requester.username == self.wplayer.username else "black"
+            plies = next(
+                (
+                    self.board.ply - index
+                    for index in range(self.board.ply - 1, -1, -1)
+                    if self.board.move_stack[index] != "0000"
+                    and self.steps[index]["turnColor"] == requester_color
+                ),
+                0,
+            )
+            if plies == 0:
+                self.stopwatch.restart()
+                return
 
         def pop_jieqi_capture() -> None:
             # Takebacks must also undo any stored Jieqi capture identities.

@@ -1,0 +1,126 @@
+/*
+  Stockfish, a UCI chess playing engine derived from Glaurung 2.1
+  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
+
+  Stockfish is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  Stockfish is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#ifndef MOVEGEN_H_INCLUDED
+#define MOVEGEN_H_INCLUDED
+
+#include <algorithm>
+#include <cassert>
+#include <cstdio>
+#include <memory>
+#include <new>
+
+#include "types.h"
+
+namespace Stockfish {
+
+class Position;
+
+enum GenType {
+  CAPTURES,
+  QUIETS,
+  QUIET_CHECKS,
+  EVASIONS,
+  EVASION_CANDIDATES,
+  NON_EVASIONS,
+  LEGAL
+};
+
+struct ExtMove {
+  Move move;
+  int value;
+
+  operator Move() const { return move; }
+  void operator=(Move m) { move = m; }
+
+  // Inhibit unwanted implicit conversions to Move
+  // with an ambiguity that yields to a compile error.
+  operator float() const = delete;
+};
+
+class Thread;
+
+
+inline bool operator<(const ExtMove& f, const ExtMove& s) {
+  return f.value < s.value;
+}
+
+template<GenType>
+ExtMove* generate(const Position& pos, ExtMove* moveList);
+
+template<GenType>
+ExtMove* generate_without_potions(const Position& pos, ExtMove* moveList);
+
+template<> ExtMove* generate<EVASION_CANDIDATES>(const Position&, ExtMove*);
+template<> ExtMove* generate_without_potions<EVASION_CANDIDATES>(const Position&, ExtMove*);
+
+template<GenType>
+ExtMove* append_potions(const Position& pos, ExtMove* listBegin, ExtMove* baseEnd,
+                        bool pruneUseless = false);
+
+// Validate one encoded potion move without expanding the complete potion list.
+bool potion_move_pseudo_legal(const Position& pos, Move move);
+
+// Some variant-specific generators (potions, exchanges) can exceed MAX_MOVES.
+// Keep a larger shared capacity so move lists stay in-bounds.
+constexpr int MOVEGEN_OVERFLOW_CAPACITY = MAX_MOVES * 4;
+constexpr size_t moveListSizeOverflow = sizeof(ExtMove) * MOVEGEN_OVERFLOW_CAPACITY;
+
+/// The MoveList struct is a simple wrapper around generate(). It sometimes comes
+/// in handy to use this class instead of the low level generate() function.
+template<GenType T>
+struct MoveList {
+
+  MoveList(const MoveList&) = delete;
+  MoveList& operator=(const MoveList&) = delete;
+  MoveList(MoveList&&) = delete;
+  MoveList& operator=(MoveList&&) = delete;
+
+#ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
+    explicit MoveList(const Position& pos);
+    ~MoveList();
+#else
+    explicit MoveList(const Position& pos) : last(generate<T>(pos, moveList))
+    {
+        assert(last - moveList <= MOVEGEN_OVERFLOW_CAPACITY);
+    }
+#endif
+  
+  const ExtMove* begin() const {
+    return moveList;
+  }
+  const ExtMove* end() const { return last; }
+  size_t size() const { return last - begin(); }
+  bool contains(Move move) const {
+    return std::find(begin(), end(), move) != end();
+  }
+
+private:
+#ifdef USE_HEAP_INSTEAD_OF_STACK_FOR_MOVE_LIST
+    Thread* thread;
+    std::unique_ptr<ExtMove[]> moveListPtr;
+    ExtMove* moveList;
+#else
+    ExtMove moveList[MOVEGEN_OVERFLOW_CAPACITY];
+#endif
+    ExtMove* last;
+};
+
+} // namespace Stockfish
+
+#endif // #ifndef MOVEGEN_H_INCLUDED

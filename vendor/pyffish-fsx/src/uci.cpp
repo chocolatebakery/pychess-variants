@@ -1,0 +1,1094 @@
+/*
+  Stockfish, a UCI chess playing engine derived from Glaurung 2.1
+  Copyright (C) 2004-2022 The Stockfish developers (see AUTHORS file)
+
+  Stockfish is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  Stockfish is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+#include <cassert>
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <string>
+
+#include "evaluate.h"
+#include "movegen.h"
+#include "position.h"
+#include "search.h"
+#include "thread.h"
+#include "timeman.h"
+#include "tt.h"
+#include "uci.h"
+#include "apiutil.h"
+#include "xboard.h"
+#include "syzygy/tbprobe.h"
+
+using namespace std;
+
+namespace Stockfish {
+
+extern vector<string> setup_bench(const Position&, istream&);
+
+namespace {
+
+  bool contains_case_insensitive(const std::string& haystack, const std::string& needle) {
+    if (needle.empty())
+        return true;
+
+    auto it = std::search(haystack.begin(), haystack.end(),
+                          needle.begin(), needle.end(),
+                          [](unsigned char a, unsigned char b) {
+                              return std::tolower(a) == std::tolower(b);
+                          });
+    return it != haystack.end();
+  }
+
+  // position() is called when engine receives the "position" UCI command.
+  // The function sets up the position described in the given FEN string ("fen")
+  // or the starting position ("startpos") and then makes the moves given in the
+  // following move list ("moves").
+
+  [[noreturn]] void invalid_position_command(const std::string& error) {
+    sync_cout << "info string " << error << sync_endl;
+    std::exit(EXIT_FAILURE);
+  }
+
+  void position(Position& pos, istringstream& is, StateListPtr& states) {
+
+    Move m;
+    string token, fen;
+
+    if (!(is >> token))
+        invalid_position_command("Invalid position command: missing position.");
+
+    bool sfen = token == "sfen";
+    bool hasMoves = false;
+    const Variant* v = variants.get(Options["UCI_Variant"]);
+
+    if (token == "startpos")
+    {
+        fen = v->startFen;
+        if (is >> token)
+        {
+            if (token != "moves")
+                invalid_position_command("Invalid position command: expected 'moves' after startpos.");
+            hasMoves = true;
+        }
+    }
+    else if (token == "fen" || token == "sfen")
+    {
+        while (is >> token)
+        {
+            if (token == "moves")
+            {
+                hasMoves = true;
+                break;
+            }
+            fen += token + " ";
+        }
+    }
+    else
+        invalid_position_command("Invalid position command: expected startpos, fen, or sfen.");
+
+    const FEN::FenValidation validation = FEN::validate_fen(fen, v, Options["UCI_Chess960"]);
+    if (validation != FEN::FEN_OK)
+        invalid_position_command("Invalid position FEN (validation error "
+                                 + std::to_string(validation) + ").");
+
+    states = StateListPtr(new std::deque<StateInfo>(1)); // Drop old and create a new one
+    pos.set(v, fen, Options["UCI_Chess960"], &states->back(), Threads.main(), sfen);
+
+    // Parse the complete move list. Invalid suffixes must not silently leave a
+    // different position than the command described.
+    while (hasMoves && is >> token)
+    {
+        if ((m = UCI::to_move(pos, token)) == MOVE_NONE)
+            invalid_position_command("Invalid move '" + token + "' in position command.");
+        states->emplace_back();
+        pos.do_move(m, states->back());
+    }
+  }
+
+  // trace_eval() prints the evaluation for the current position, consistent with the UCI
+  // options set so far.
+
+  void trace_eval(Position& pos) {
+
+    StateListPtr states(new std::deque<StateInfo>(1));
+    Position p;
+    p.set(pos.variant(), pos.fen(), pos.is_chess960(), &states->back(), Threads.main());
+
+    Eval::NNUE::verify();
+
+    sync_cout << "\n" << Eval::trace(p) << sync_endl;
+  }
+
+
+  // setoption() is called when engine receives the "setoption" UCI command. The
+  // function updates the UCI option ("name") to the given value ("value").
+
+  void setoption(istringstream& is) {
+
+    string token, name, value;
+
+    Threads.stop = true;
+    Threads.main()->wait_for_search_finished();
+    Threads.wait_for_search_finished();
+
+    is >> token; // Consume "name" token
+
+    if (CurrentProtocol == UCCI)
+        name = token;
+    else
+    // Read option name (can contain spaces)
+    while (is >> token && token != "value")
+        name += (name.empty() ? "" : " ") + token;
+
+    // Read option value (can contain spaces)
+    while (is >> token)
+        value += (value.empty() ? "" : " ") + token;
+
+    if (name == "UCI_Variant" && !value.empty() && !variants.has(value))
+        sync_cout << "info string unknown variant '" << value
+                  << "'; keeping '" << std::string(Options["UCI_Variant"]) << "'" << sync_endl;
+    else if (Options.count(name))
+        Options[name] = value;
+    // Deal with option name aliases in UCI dialects
+    else if (is_valid_option(Options, name))
+        Options[name] = value;
+    else
+        sync_cout << "No such option: " << name << sync_endl;
+  }
+
+
+  // go() is called when engine receives the "go" UCI command. The function sets
+  // the thinking time and other parameters from the input string, then starts
+  // the search.
+
+  void go(Position& pos, istringstream& is, StateListPtr& states, const std::vector<Move>& banmoves = {}) {
+
+    Search::LimitsType limits;
+    string token;
+    bool ponderMode = false;
+
+    limits.startTime = now(); // As early as possible!
+
+    limits.banmoves = banmoves;
+    bool isUsi = CurrentProtocol == USI;
+    int secResolution = Options["usemillisec"] ? 1 : 1000;
+
+    while (is >> token)
+    {
+        if (token == "searchmoves") // Needs to be the last command on the line
+        {
+            // Note: unmatched tokens are queued as MOVE_NONE, which matches
+            // no legal move. A list with no legal match must search no moves
+            // (bestmove (none)), so do not filter them out here.
+            while (is >> token)
+                limits.searchmoves.push_back(UCI::to_move(pos, token));
+            break;
+        }
+
+        else if (token == "wtime")     is >> limits.time[isUsi ? BLACK : WHITE];
+        else if (token == "btime")     is >> limits.time[isUsi ? WHITE : BLACK];
+        else if (token == "winc")      is >> limits.inc[isUsi ? BLACK : WHITE];
+        else if (token == "binc")      is >> limits.inc[isUsi ? WHITE : BLACK];
+        else if (token == "movestogo") is >> limits.movestogo;
+        else if (token == "depth")     is >> limits.depth;
+        else if (token == "nodes")     is >> limits.nodes;
+        else if (token == "movetime")  is >> limits.movetime;
+        else if (token == "mate")      is >> limits.mate;
+        else if (token == "perft")     is >> limits.perft;
+        else if (token == "infinite")  limits.infinite = 1;
+        else if (token == "ponder")    ponderMode = true;
+        // UCCI commands
+        else if (token == "time")         is >> limits.time[pos.side_to_move()], limits.time[pos.side_to_move()] *= secResolution;
+        else if (token == "opptime")      is >> limits.time[~pos.side_to_move()], limits.time[~pos.side_to_move()] *= secResolution;
+        else if (token == "increment")    is >> limits.inc[pos.side_to_move()], limits.inc[pos.side_to_move()] *= secResolution;
+        else if (token == "oppincrement") is >> limits.inc[~pos.side_to_move()], limits.inc[~pos.side_to_move()] *= secResolution;
+        // USI commands
+        else if (token == "byoyomi")
+        {
+            int byoyomi = 0;
+            is >> byoyomi;
+            if (is.fail() || byoyomi < 0)
+            {
+                sync_cout << "info string error: invalid argument for 'byoyomi'" << sync_endl;
+                return;
+            }
+            limits.inc[WHITE] = limits.inc[BLACK] = byoyomi;
+            limits.time[WHITE] += byoyomi;
+            limits.time[BLACK] += byoyomi;
+        }
+
+        // Like upstream, refuse to start a search on malformed numeric input
+        // rather than searching with indeterminate limits. Unlike upstream's
+        // abort, ignore just this command: there is no error channel that all
+        // GUIs handle, and killing the engine loses the game.
+        if (is.fail())
+        {
+            sync_cout << "info string error: invalid argument for '" << token << "'" << sync_endl;
+            return;
+        }
+    }
+
+    if (   limits.depth < 0 || limits.mate < 0 || limits.perft < 0 || limits.movestogo < 0
+        || limits.nodes < 0 || limits.movetime < 0
+        || limits.time[WHITE] < 0 || limits.time[BLACK] < 0
+        || limits.inc[WHITE] < 0 || limits.inc[BLACK] < 0)
+    {
+        sync_cout << "info string error: negative search limit" << sync_endl;
+        return;
+    }
+
+    Threads.start_thinking(pos, states, limits, ponderMode);
+  }
+
+  // bench() is called when engine receives the "bench" command. Firstly
+  // a list of UCI commands is setup according to bench parameters, then
+  // it is run one by one printing a summary at the end.
+
+  void bench(Position& pos, istream& args, StateListPtr& states) {
+
+    string token;
+    uint64_t num, nodes = 0, cnt = 1;
+
+    vector<string> list = setup_bench(pos, args);
+    num = count_if(list.begin(), list.end(), [](const string& s) { return s.find("go ") == 0 || s.find("eval") == 0; });
+
+    TimePoint elapsed = now();
+
+    for (const auto& cmd : list)
+    {
+        istringstream is(cmd);
+        is >> skipws >> token;
+
+        if (token == "go" || token == "eval")
+        {
+            cerr << "\nPosition: " << cnt++ << '/' << num << " (" << pos.fen() << ")" << endl;
+            if (token == "go")
+            {
+               go(pos, is, states);
+               Threads.main()->wait_for_search_finished();
+               nodes += Threads.nodes_searched();
+            }
+            else
+               trace_eval(pos);
+        }
+        else if (token == "setoption")  setoption(is), pos.set_thread(Threads.main());
+        else if (token == "position")   position(pos, is, states);
+        else if (token == "ucinewgame") { Search::clear(); elapsed = now(); } // Search::clear() may take some while
+    }
+
+    elapsed = now() - elapsed + 1; // Ensure positivity to avoid a 'divide by zero'
+
+    dbg_print(); // Just before exiting
+
+    cerr << "\n==========================="
+         << "\nTotal time (ms) : " << elapsed
+         << "\nNodes searched  : " << nodes
+         << "\nNodes/second    : " << 1000 * nodes / elapsed << endl;
+  }
+
+  // The win rate model returns the probability (per mille) of winning given an eval
+  // and a game-ply. The model fits rather accurately the LTC fishtest statistics.
+  int win_rate_model(Value v, int ply) {
+
+     // The model captures only up to 240 plies, so limit input (and rescale)
+     double m = std::min(240, ply) / 64.0;
+
+     // Coefficients of a 3rd order polynomial fit based on fishtest data
+     // for two parameters needed to transform eval to the argument of a
+     // logistic function.
+     static constexpr double as[] = {-3.68389304,  30.07065921, -60.52878723, 149.53378557};
+     static constexpr double bs[] = {-2.0181857,   15.85685038, -29.83452023,  47.59078827};
+     double a = (((as[0] * m + as[1]) * m + as[2]) * m) + as[3];
+     double b = (((bs[0] * m + bs[1]) * m + bs[2]) * m) + bs[3];
+
+     // Transform eval to centipawns with limited range
+     double x = std::clamp(double(100 * v) / PawnValueEg, -2000.0, 2000.0);
+
+     // Return win rate in per mille (rounded to nearest)
+     return int(0.5 + 1000 / (1 + std::exp((a - x) / b)));
+  }
+
+  // load() is called when engine receives the "load" or "check" command.
+  // The function reads variant configuration files.
+
+  void load(istringstream& is, bool check = false) {
+
+    string token;
+    std::getline(is >> std::ws, token);
+
+    // The argument to load either is a here-doc or a file path
+    if (token.rfind("<<", 0) == 0)
+    {
+        // Trim the EOF marker
+        if (!(stringstream(token.substr(2)) >> token))
+            token = "";
+
+        // Parse variant config till EOF marker
+        stringstream ss;
+        std::string line;
+        while (std::getline(cin, line) && line != token)
+            ss << line << std::endl;
+        if (check)
+            variants.parse_istream<true>(ss);
+        else
+        {
+            variants.parse_istream<false>(ss);
+            Options["UCI_Variant"].set_combo(variants.get_keys());
+        }
+    }
+    else
+    {
+        // store path if non-empty after trimming
+        std::size_t end = token.find_last_not_of(' ');
+        if (end != std::string::npos)
+        {
+            if (check)
+                variants.parse<true>(token.erase(end + 1));
+            else
+                Options["VariantPath"] = token.erase(end + 1);
+        }
+    }
+  }
+
+  // print_variant_info() prints the resolved variant configuration.
+
+  void print_variant_info(const Variant* v, const std::string& variantName) {
+
+    if (!v) return;
+
+    sync_cout << variant_info_json(variantName) << sync_endl;
+  }
+
+  // print_available_variants() prints a sorted list of all supported variants,
+  // optionally filtered by a search string.
+
+  void print_available_variants(const std::string& filter = "") {
+
+    std::vector<std::string> keys = variants.get_keys();
+    std::sort(keys.begin(), keys.end());
+
+    if (!filter.empty())
+    {
+        std::vector<std::string> filtered;
+        for (const auto& k : keys)
+            if (contains_case_insensitive(k, filter))
+                filtered.push_back(k);
+        keys = std::move(filtered);
+    }
+
+    if (keys.empty())
+    {
+        sync_cout << "No variants found matching '" << filter << "'." << sync_endl;
+        return;
+    }
+
+    sync_cout << "\nSupported Variants (" << keys.size() << "):" << sync_endl;
+
+    const int columns = 4;
+    const int width = 20;
+
+    for (size_t i = 0; i < keys.size(); ++i)
+    {
+        sync_cout << std::left << std::setw(width) << keys[i];
+        if ((i + 1) % columns == 0 || i == keys.size() - 1)
+            sync_cout << sync_endl;
+    }
+
+    sync_cout << std::right;
+  }
+
+  // print_legal_moves() prints a sorted list of all legal moves in the current
+  // position using the specified notation (UCI or SAN).
+
+  void print_legal_moves(Position& pos, istringstream& is) {
+
+    string token;
+    is >> token;
+
+    Notation n = NOTATION_DEFAULT;
+
+    if (token == "san")
+        n = default_notation(pos.variant());
+    else if (token != "uci" && !token.empty())
+        sync_cout << "Unknown notation '" << token << "'; defaulting to UCI." << sync_endl;
+
+    std::vector<std::string> moves;
+    for (const auto& m : MoveList<LEGAL>(pos))
+        moves.push_back(n == NOTATION_DEFAULT ? UCI::move(pos, m) : SAN::move_to_san(pos, m, n));
+
+    std::sort(moves.begin(), moves.end());
+
+    if (moves.empty())
+    {
+        sync_cout << "No legal moves." << sync_endl;
+        return;
+    }
+
+    sync_cout << "\nLegal moves (" << moves.size() << "):" << sync_endl;
+
+    const int columns = 6;
+    const int width = 12;
+
+    for (size_t i = 0; i < moves.size(); ++i)
+    {
+        sync_cout << std::left << std::setw(width) << moves[i];
+        if ((i + 1) % columns == 0 || i == moves.size() - 1)
+            sync_cout << sync_endl;
+    }
+
+    sync_cout << std::right;
+  }
+
+} // namespace
+
+
+/// UCI::loop() waits for a command from stdin, parses it and calls the appropriate
+/// function. Also intercepts EOF from stdin to ensure gracefully exiting if the
+/// GUI dies unexpectedly. When called with some command line arguments, e.g. to
+/// run 'bench', once the command is executed the function returns immediately.
+/// In addition to the UCI ones, also some additional debug commands are supported.
+
+void UCI::loop(int argc, char* argv[]) {
+
+  Position pos;
+  string token, cmd;
+  StateListPtr states(new std::deque<StateInfo>(1));
+
+  assert(variants.get(Options["UCI_Variant"]) != nullptr);
+  pos.set(variants.get(Options["UCI_Variant"]), variants.get(Options["UCI_Variant"])->startFen, false, &states->back(), Threads.main());
+
+  for (int i = 1; i < argc; ++i)
+      cmd += std::string(argv[i]) + " ";
+
+  // XBoard state machine
+  XBoard::stateMachine = new XBoard::StateMachine(pos, states);
+  // UCCI banmoves state
+  std::vector<Move> banmoves = {};
+
+  if (argc > 1 && (std::strcmp(argv[1], "noautoload") == 0))
+  {
+      cmd = "";
+      argc = 1;
+  }
+  else if (argc == 1 || !(std::strcmp(argv[1], "load") == 0))
+  {
+      // Check environment for variants.ini file
+      char *envVariantPath = std::getenv("FAIRY_STOCKFISH_VARIANT_PATH");
+      if (envVariantPath != NULL)
+          Options["VariantPath"] = std::string(envVariantPath);
+  }
+
+  do {
+      if (argc == 1 && !getline(cin, cmd)) // Block here waiting for input or EOF
+          cmd = "quit";
+
+      istringstream is(cmd);
+
+      token.clear(); // Avoid a stale if getline() returns empty or blank line
+      is >> skipws >> token;
+
+      if (    token == "quit"
+          ||  token == "stop")
+          Threads.stop = true;
+
+      // The GUI sends 'ponderhit' to tell us the user has played the expected move.
+      // So 'ponderhit' will be sent if we were told to ponder on the same move the
+      // user has played. We should continue searching but switch from pondering to
+      // normal search.
+      else if (token == "ponderhit")
+          Threads.main()->ponder = false; // Switch to normal search
+
+      else if (token == "uci" || token == "usi" || token == "ucci" || token == "xboard" || token == "ucicyclone")
+      {
+          CurrentProtocol =  token == "uci"  ? (CurrentProtocol == UCI_CYCLONE ? UCI_CYCLONE : UCI_GENERAL)
+                           : token == "ucicyclone" ? UCI_CYCLONE
+                           : token == "usi"  ? USI
+                           : token == "ucci" ? UCCI
+                           : XBOARD;
+          string defaultVariant = string(
+#ifdef LARGEBOARDS
+                                           CurrentProtocol == USI  ? "shogi"
+                                         : CurrentProtocol == UCCI || CurrentProtocol == UCI_CYCLONE ? "xiangqi"
+#else
+                                           CurrentProtocol == USI  ? "minishogi"
+                                         : CurrentProtocol == UCCI || CurrentProtocol == UCI_CYCLONE ? "minixiangqi"
+#endif
+                                                           : "chess");
+          Options["UCI_Variant"].set_default(defaultVariant);
+          std::istringstream ss("startpos");
+          position(pos, ss, states);
+          if (is_uci_dialect(CurrentProtocol) && token != "ucicyclone")
+              sync_cout << "id name " << engine_info(true)
+                          << "\n" << Options
+                          << "\n" << token << "ok"  << sync_endl;
+          // Allow to enforce protocol at startup
+          argc = 1;
+      }
+
+      else if (CurrentProtocol == XBOARD)
+          XBoard::stateMachine->process_command(token, is);
+
+      else if (token == "setoption")  setoption(is), pos.set_thread(Threads.main());
+      // UCCI-specific banmoves command
+      else if (token == "banmoves")
+          while (is >> token)
+              banmoves.push_back(UCI::to_move(pos, token));
+      else if (token == "go")         go(pos, is, states, banmoves);
+      else if (token == "position")   position(pos, is, states), banmoves.clear();
+      else if (token == "ucinewgame" || token == "usinewgame" || token == "uccinewgame") Search::clear();
+      else if (token == "isready")    sync_cout << "readyok" << sync_endl;
+      else if (token == "help")
+          sync_cout << "\nStandard Protocol Commands:"
+                    << "\n  uci, usi, ucci, xboard      Select an engine protocol"
+                    << "\n  isready                     Check if the engine is ready"
+                    << "\n  setoption name N value V    Update an engine option"
+                    << "\n  ucinewgame                  Prepare for a new game"
+                    << "\n  position [startpos|fen]     Load a game position"
+                    << "\n  go                          Start searching for the best move"
+                    << "\n  stop                        Finish searching immediately"
+                    << "\n  ponderhit                   Continue as a normal search"
+                    << "\n  quit                        Exit the program"
+                    << "\n\nTools and Debugging:"
+                    << "\n  d                           Display the current board"
+                    << "\n  vinfo                       Show details about the active variant"
+                    << "\n  eval                        Show static evaluation of the position"
+                    << "\n  bench                       Run internal performance tests"
+                    << "\n  compiler                    Show information about the compiler"
+                    << "\n  export_net [file]           Export the currently loaded NNUE net"
+                    << "\n  legal [uci|san]             List all legal moves in the current position"
+                    << "\n  variants [filter]           Show supported variants, optionally filtered"
+                    << "\n  load [file|<<EOF]           Load variant rules from a file or text"
+                    << "\n  check [file|<<EOF]          Validate a variant configuration"
+                    << "\n  flip                        Flip the board perspective"
+                    << sync_endl;
+
+      // Additional custom non-UCI commands, mainly for debugging.
+      // Do not use these commands during a search!
+      else if (token == "flip")     pos.flip();
+      else if (token == "bench")    bench(pos, is, states);
+      else if (token == "d")        sync_cout << pos << sync_endl;
+      else if (token == "vinfo")
+      {
+          const std::string variantName = Options["UCI_Variant"];
+          print_variant_info(variants.get(variantName), variantName);
+      }
+      else if (token == "variants")
+      {
+          std::string filter;
+          is >> filter;
+          print_available_variants(filter);
+      }
+      else if (token == "legal")
+          print_legal_moves(pos, is);
+      else if (token == "eval")     trace_eval(pos);
+      else if (token == "compiler") sync_cout << compiler_info() << sync_endl;
+      else if (token == "export_net")
+      {
+          std::optional<std::string> filename;
+          std::string f;
+          if (is >> skipws >> f)
+              filename = f;
+          Eval::NNUE::save_eval(filename);
+      }
+      else if (token == "load")     { load(is); argc = 1; } // continue reading stdin
+      else if (token == "check")    load(is, true);
+      // UCI-Cyclone omits the "position" keyword
+      else if (token == "fen" || token == "startpos")
+      {
+#ifdef LARGEBOARDS
+          if (CurrentProtocol == UCI_GENERAL && Options["UCI_Variant"] == "chess")
+          {
+              CurrentProtocol = UCI_CYCLONE;
+              Options["UCI_Variant"].set_default("xiangqi");
+          }
+#endif
+          is.seekg(0);
+          position(pos, is, states);
+      }
+      else if (!token.empty() && token[0] != '#')
+          sync_cout << "Unknown command: " << cmd << sync_endl;
+
+  } while (token != "quit" && argc == 1); // Command line args are one-shot
+
+  if (XBoard::stateMachine)
+  {
+      XBoard::stateMachine->shutdown_ponder_worker();
+      delete XBoard::stateMachine;
+      XBoard::stateMachine = nullptr;
+  }
+}
+
+
+/// UCI::value() converts a Value to a string suitable for use with the UCI
+/// protocol specification:
+///
+/// cp <x>    The score from the engine's point of view in centipawns.
+/// mate <y>  Mate in y moves, not plies. If the engine is getting mated
+///           use negative values for y.
+
+string UCI::value(Value v) {
+
+  assert(-VALUE_INFINITE < v && v < VALUE_INFINITE);
+
+  stringstream ss;
+
+  if (CurrentProtocol == XBOARD)
+  {
+      if (abs(v) < VALUE_MATE_IN_MAX_PLY)
+          ss << v * 100 / PawnValueEg;
+      else
+          ss << (v > 0 ? XBOARD_VALUE_MATE + VALUE_MATE - v + 1 : -XBOARD_VALUE_MATE - VALUE_MATE - v - 1) / 2;
+  } else
+
+  if (abs(v) < VALUE_MATE_IN_MAX_PLY)
+      ss << (CurrentProtocol == UCCI ? "" : "cp ") << v * 100 / PawnValueEg;
+  else if (CurrentProtocol == USI)
+      // In USI, mate distance is given in ply
+      ss << "mate " << (v > 0 ? VALUE_MATE - v : -VALUE_MATE - v);
+  else
+      ss << "mate " << (v > 0 ? VALUE_MATE - v + 1 : -VALUE_MATE - v - 1) / 2;
+
+  return ss.str();
+}
+
+
+/// UCI::wdl() report WDL statistics given an evaluation and a game ply, based on
+/// data gathered for fishtest LTC games.
+
+string UCI::wdl(Value v, int ply) {
+
+  stringstream ss;
+
+  int wdl_w = win_rate_model( v, ply);
+  int wdl_l = win_rate_model(-v, ply);
+  int wdl_d = 1000 - wdl_w - wdl_l;
+  ss << " wdl " << wdl_w << " " << wdl_d << " " << wdl_l;
+
+  return ss.str();
+}
+
+
+/// UCI::square() converts a Square to a string in algebraic notation (g1, a7, etc.)
+
+std::string UCI::square(const Position& pos, Square s) {
+#ifdef LARGEBOARDS
+  if (CurrentProtocol == USI)
+  {
+    // USI spells files as 1-2 digit numbers, so the width follows the file.
+    // The rank is always a single letter.
+    int fileNum = int(pos.max_file()) - int(file_of(s)) + 1;
+    char rankLetter = char('a' + pos.max_rank() - rank_of(s));
+    return fileNum < 10 ? std::string{ char('0' + fileNum), rankLetter }
+                        : std::string{ char('0' + fileNum / 10), char('0' + fileNum % 10), rankLetter };
+  }
+  else if (pos.max_rank() == RANK_10 && CurrentProtocol != UCI_GENERAL)
+      return std::string{ char('a' + file_of(s)), char('0' + rank_of(s)) };
+  else
+      return rank_of(s) < RANK_10 ? std::string{ char('a' + file_of(s)), char('1' + (rank_of(s) % 10)) }
+                                  : std::string{ char('a' + file_of(s)), char('0' + ((rank_of(s) + 1) / 10)),
+                                                 char('0' + ((rank_of(s) + 1) % 10)) };
+#else
+  return CurrentProtocol == USI ? std::string{ char('1' + pos.max_file() - file_of(s)), char('a' + pos.max_rank() - rank_of(s)) }
+                                : std::string{ char('a' + file_of(s)), char('1' + rank_of(s)) };
+#endif
+}
+
+/// UCI::dropped_piece() generates a piece label string from a Move.
+
+string UCI::dropped_piece(const Position& pos, Move m) {
+  assert(is_drop_move(m));
+  if (dropped_piece_type(m) == pos.promoted_piece_type(in_hand_piece_type(m)))
+      // Dropping as promoted piece
+      return std::string("+") + pos.piece_symbol(make_piece(WHITE, in_hand_piece_type(m)));
+  else
+      return pos.piece_symbol(make_piece(WHITE, dropped_piece_type(m)));
+}
+
+string UCI::exchange(const Position &pos, Move m) {
+  assert(is_drop_move(m));
+  if (type_of(m) != DROP)
+      return std::string{};
+  if (exchange_piece(m) == NO_PIECE_TYPE) {
+      return std::string{};
+  }
+  assert(pos.capture_type() == PRISON);
+  return std::string{'#', pos.piece_to_char()[exchange_piece(m)]};
+}
+
+/// UCI::move() converts a Move to a string in coordinate notation (g1f3, a7a8q).
+/// The only special case is castling, where we print in the e1g1 notation in
+/// normal chess mode, and in e1h1 notation in chess960 mode. Internally all
+/// castling moves are always encoded as 'king captures rook'. Some fairy
+/// special moves use suffixes: clone moves append 'c', swap moves append 's',
+/// self-destruct moves append 'x', and pulls append ",<pulled-square>".
+
+string UCI::move(const Position& pos, Move m) {
+
+  Square from = from_sq(m);
+  Square to = to_sq(m);
+  bool wallMove = pos.walling(pos.side_to_move()) && is_gating(m);
+  bool cloneMove = pos.is_clone_move(m);
+  bool pullMove = pos.is_pull_move(m);
+  bool swapMove = pos.is_swap_move(m);
+
+  if (m == MOVE_NONE)
+      return CurrentProtocol == USI ? "resign" : "(none)";
+
+  if (pos.in_opening_self_removal_phase() && is_pass(m))
+      return UCI::square(pos, from) + UCI::square(pos, to);
+
+  if (is_pass(m) && CurrentProtocol == XBOARD)
+      return "@@@@";
+  if (is_pass(m))
+      return "0000";
+
+  if (is_laser_fire(m))
+  {
+      std::string fire = UCI::square(pos, from) + UCI::square(pos, to);
+      if (is_gating(m))
+      {
+          fire += ":" + std::to_string(rotation_value(m));
+          if (rotation_square(m) != from)
+              fire += UCI::square(pos, rotation_square(m));
+      }
+      return fire + "f";
+  }
+
+  bool is_wall_only = wallMove && type_of(m) == SPECIAL && from == to;
+  if (is_wall_only)
+      return (CurrentProtocol == XBOARD ? "@@@@," : "0000,") + UCI::square(pos, gating_square(m));
+
+  if (is_self_destruct(m))
+      return UCI::square(pos, from) + UCI::square(pos, to) + "x";
+
+  if (is_two_leg(m))
+  {
+      // Canonical three-square spelling from+via+to. Alternative quiet
+      // routes for the same destination are normalized in to_move().
+      std::string s = UCI::square(pos, from) + UCI::square(pos, via_sq(m)) + UCI::square(pos, to);
+      if (is_any_promotion(m))
+          s += "+";
+      return s;
+  }
+
+  if (m == MOVE_NULL)
+      return "0000";
+
+  bool potionMove = false;
+  std::string potionPrefix;
+
+  if (pos.potions_enabled())
+  {
+      if (type_of(m) == PROMOTION_POTION)
+      {
+          Variant::PotionType pot = static_cast<Variant::PotionType>(potion_type(m));
+          PieceType potionPiece = pos.potion_piece(pot);
+          if (potionPiece != NO_PIECE_TYPE)
+          {
+              potionMove = true;
+              potionPrefix = pos.piece_symbol(make_piece(BLACK, potionPiece))
+                             + "@" + UCI::square(pos, potion_target_square(m));
+          }
+      }
+      else if (is_gating(m))
+      {
+          for (int idx = 0; idx < Variant::POTION_TYPE_NB; ++idx)
+          {
+              PieceType potionPiece = pos.potion_piece(static_cast<Variant::PotionType>(idx));
+              if (!potionMove && potionPiece != NO_PIECE_TYPE
+                  && gating_type(m) == potionPiece)
+              {
+                  potionMove = true;
+                  potionPrefix = pos.piece_symbol(make_piece(BLACK, gating_type(m)))
+                                 + "@" + UCI::square(pos, gating_square(m));
+              }
+          }
+      }
+  }
+
+  if (is_gating(m) && gating_square(m) == to && !potionMove && !pos.laser_game())
+      from = to_sq(m), to = from_sq(m);
+  else if (type_of(m) == CASTLING && !pos.is_chess960())
+  {
+      to = make_square(to > from ? pos.castling_kingside_file() : pos.castling_queenside_file(), rank_of(from));
+      // If the castling move is ambiguous with a normal king move, switch to 960 notation
+      if (from != to && pos.pseudo_legal(make_move(from, to)))
+          to = to_sq(m);
+  }
+
+  string move = (is_drop_move(m)
+          ? UCI::dropped_piece(pos, m) + UCI::exchange(pos, m) + (CurrentProtocol == USI ? '*' : '@')
+          : UCI::square(pos, from))
+                  + UCI::square(pos, to);
+
+  if (CurrentProtocol == XBOARD && pos.is_chess960() && type_of(m) == CASTLING)
+      move = to > from ? "O-O" : "O-O-O";
+
+  auto appendWall = [&] {
+      move += "," + UCI::square(pos, to) + UCI::square(pos, gating_square(m));
+  };
+
+  // Wall square.
+  // Keep the legacy "<base>,<to><gate>" form on output for GUI compatibility.
+  if (wallMove && CurrentProtocol == XBOARD)
+      appendWall();
+
+  if (type_of(m) == PROMOTION || type_of(m) == PROMOTION_POTION)
+  {
+      PieceType pt = promotion_type(m);
+      if (pos.laser_game() && pos.is_oriented(pt))
+      {
+          move += pos.piece_symbol(make_piece(BLACK, pt));
+          int orient = pos.variant()->hasLaserPromotionOrientation[pos.side_to_move()][pt]
+                     ? pos.variant()->laserPromotionOrientation[pos.side_to_move()][pt] : 0;
+          if (orient > 0)
+              move += ":" + std::to_string(orient);
+      }
+      else
+          move += pos.piece_symbol(make_piece(BLACK, pt));
+      if (is_gating(m) && pos.laser_game())
+          move += "," + UCI::square(pos, gating_square(m));
+  }
+  else if (type_of(m) == PIECE_PROMOTION)
+  {
+      move += '+';
+      if (is_gating(m) && pos.laser_game())
+          move += "," + UCI::square(pos, gating_square(m));
+  }
+  else if (type_of(m) == PIECE_DEMOTION)
+      move += '-';
+  else if (is_stack_move(m))
+      move += '+';
+  else if (is_unstack_move(m))
+      move += '-';
+  else if (is_gating(m) && !potionMove && !pos.walling(pos.side_to_move()))
+  {
+      if (pos.laser_game())
+      {
+          move += ":" + std::to_string(rotation_value(m));
+      }
+      else
+          move += pos.piece_symbol(make_piece(BLACK, gating_type(m)));
+
+      if (gating_square(m) != from && (!pos.laser_game() || from != to))
+          move += UCI::square(pos, gating_square(m));
+  }
+  else if (cloneMove)
+      move += "c";
+  else if (swapMove)
+      move += "s";
+
+  if (pos.paired_drop(m))
+      move += "," + UCI::square(pos, pos.secondary_drop_square(m));
+  else if (is_insert_move(m))
+      move += "," + UCI::square(pos, from_sq(m));
+  else if (pullMove)
+      move += "," + UCI::square(pos, pull_square(m));
+
+  // Wall square.
+  // Keep the legacy "<base>,<to><gate>" form on output for GUI compatibility.
+  if (wallMove && CurrentProtocol != XBOARD)
+      appendWall();
+
+  if (potionMove)
+      move = potionPrefix + "," + move;
+
+  return move;
+}
+
+
+/// UCI::to_move() converts a string representing a move in coordinate notation
+/// (g1f3, a7a8q) to the corresponding legal Move, if any.
+
+Move UCI::to_move(const Position& pos, string& str) {
+
+  if (!str.empty())
+  {
+      // shogi moves refraining from promotion might use equals sign
+      str.erase(std::remove(str.begin(), str.end(), '='), str.end());
+
+      // Junior could send promotion/gating piece in uppercase
+      if (str.size() >= 5)
+      {
+          size_t last = str.size() - 1;
+          if (Variant::is_piece_id_suffix(str[last]))
+          {
+              if (last >= 1 && std::isalpha(static_cast<unsigned char>(str[last - 1])))
+                  str[last - 1] = char(std::tolower(static_cast<unsigned char>(str[last - 1])));
+          }
+          else if (str != "O-O-O" && std::isalpha(static_cast<unsigned char>(str[last])))
+              str[last] = char(std::tolower(static_cast<unsigned char>(str[last])));
+      }
+  }
+
+  for (const auto& m : MoveList<LEGAL>(pos)) {
+      auto move_str = UCI::move(pos, m);
+      string move_str_alt;
+      string move_str_short_wall;
+
+      if (pos.paired_drop(m))
+      {
+          size_t sep = move_str.find(CurrentProtocol == USI ? '*' : '@');
+          size_t comma = move_str.find(',');
+          if (sep != string::npos && comma != string::npos)
+          {
+              string first = move_str.substr(sep + 1, comma - sep - 1);
+              string second = move_str.substr(comma + 1);
+              move_str_alt = move_str.substr(0, sep + 1) + second + "," + first;
+          }
+      }
+
+      if (pos.walling(pos.side_to_move()) && is_gating(m))
+      {
+          size_t comma = move_str.find(',');
+          std::string to = UCI::square(pos, to_sq(m));
+          std::string gate = UCI::square(pos, gating_square(m));
+          if (comma != string::npos && to.size() == 2 && gate.size() == 2)
+          {
+              std::string base = move_str.substr(0, comma);
+              move_str_short_wall = base + "," + gate;
+              // Legacy walling commands encode a wall relocation as
+              // "<base>,<oldWall><newWall>". Only the final wall square matters
+              // to move legality, so also accept any 4-char suffix ending in the
+              // actual target wall square.
+              if (str.size() == base.size() + 5
+                  && str.rfind(base + ",", 0) == 0
+                  && str.substr(str.size() - gate.size()) == gate)
+                  move_str_short_wall = str;
+          }
+      }
+
+      // special processing of optional gating suffix from xboard
+      // like "b1c3o" => "b1c3"
+      if (CurrentProtocol == XBOARD && str.length() == 5 && move_str.length() == 4) {
+          if (memcmp(str.c_str(), move_str.c_str(), 4) == 0){
+              PieceType pt = pos.committed_piece_type(m, false);
+              PieceType ptCastling = pos.committed_piece_type(m, true);
+              if (
+                    (
+                        pt != NO_PIECE_TYPE
+                        &&
+                        pos.piece_to_char()[make_piece(BLACK, pt)] == str[4]
+                    )
+                    ||
+                    (
+                        ptCastling != NO_PIECE_TYPE
+                        &&
+                        pos.piece_to_char()[make_piece(BLACK, ptCastling)] == str[4]
+                    )
+              ) {
+                  return m;
+              }
+          }
+      }
+
+      if (   str == move_str
+          || (!move_str_alt.empty() && str == move_str_alt)
+          || (!move_str_short_wall.empty() && str == move_str_short_wall)
+          || (is_pass(m) && str == UCI::square(pos, from_sq(m)) + UCI::square(pos, to_sq(m))))
+          return m;
+  }
+
+  // Accept non-canonical two-leg routes and normalize to the generated
+  // move. The generator merges equivalent quiet routes, but pseudo_legal()
+  // recognizes each valid route. An alias shares from/to with the canonical
+  // move; captures and promotion must also match, since the intermediate
+  // victim of a double capture matters.
+  if (pos.has_two_leg_moves())
+  {
+      for (const auto& m : MoveList<LEGAL>(pos))
+      {
+          if (!is_two_leg(m))
+              continue;
+          std::string canonical = UCI::move(pos, m);
+          bool promotes = is_two_leg_promotion(m);
+          bool strPromotes = !str.empty() && str.back() == '+';
+          if (promotes != strPromotes)
+              continue;
+          std::string aliasBase = promotes ? str.substr(0, str.size() - 1) : str;
+          std::string canonicalBase = promotes ? canonical.substr(0, canonical.size() - 1) : canonical;
+          if (aliasBase == canonicalBase)
+              continue;
+          std::string fromS = UCI::square(pos, from_sq(m));
+          std::string toS = UCI::square(pos, to_sq(m));
+          if (aliasBase.size() <= fromS.size() + toS.size()
+              || aliasBase.compare(0, fromS.size(), fromS) != 0
+              || aliasBase.compare(aliasBase.size() - toS.size(), toS.size(), toS) != 0)
+              continue;
+          std::string mid = aliasBase.substr(fromS.size(),
+                                             aliasBase.size() - fromS.size() - toS.size());
+          Square via = SQ_NONE;
+          for (Square s = SQ_A1; s < SQUARE_NB; ++s)
+          {
+              if (!(pos.board_bb() & s))
+                  continue;
+              if (UCI::square(pos, s) == mid)
+              {
+                  via = s;
+                  break;
+              }
+          }
+          if (via == SQ_NONE || via == via_sq(m))
+              continue;
+          Move alias = is_two_step(m) ? make_two_step(from_sq(m), via, to_sq(m), promotes)
+                                      : make_hook(from_sq(m), via, to_sq(m), promotes);
+          if (!pos.pseudo_legal(alias) || !pos.legal(alias))
+              continue;
+          if (pos.capture_squares(alias) != pos.capture_squares(m))
+              continue;
+          return m;
+      }
+  }
+
+  return MOVE_NONE;
+}
+
+std::string UCI::option_name(std::string name) {
+  if (CurrentProtocol == UCCI && name == "Hash")
+      return "hashsize";
+  if (CurrentProtocol == USI)
+  {
+      if (name == "Hash" || name == "Ponder" || name == "MultiPV")
+          return "USI_" + name;
+      if (name.substr(0, 4) == "UCI_")
+          name = "USI_" + name.substr(4);
+  }
+  if (CurrentProtocol == UCCI || CurrentProtocol == USI)
+      std::replace(name.begin(), name.end(), ' ', '_');
+  return name;
+}
+
+bool UCI::is_valid_option(UCI::OptionsMap& options, std::string& name) {
+  for (const auto& it : options)
+  {
+      std::string optionName = option_name(it.first);
+      if (!options.key_comp()(optionName, name) && !options.key_comp()(name, optionName))
+      {
+          name = it.first;
+          return true;
+      }
+  }
+  return false;
+}
+
+Protocol CurrentProtocol = UCI_GENERAL; // Global object
+
+} // namespace Stockfish

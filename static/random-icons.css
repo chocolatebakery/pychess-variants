@@ -1,0 +1,29 @@
+[data-icon="\e910"] { --variant-icon: url('icons/knightmate.svg'); }
+[data-icon="\e911"] { --variant-icon: url('icons/atomar.svg'); }
+[data-icon="\e912"] { --variant-icon: url('icons/berolina.svg'); }
+[data-icon="\e913"] { --variant-icon: url('icons/extinction.svg'); }
+[data-icon="\e914"] { --variant-icon: url('icons/kinglet.svg'); }
+[data-icon="\e915"] { --variant-icon: url('icons/threekings.svg'); }
+[data-icon="\e916"] { --variant-icon: url('icons/torpedo.svg'); }
+[data-icon="\e917"] { --variant-icon: url('icons/losers.svg'); }
+[data-icon="\e918"] { --variant-icon: url('icons/riflechess.svg'); }
+[data-icon="\e919"] { --variant-icon: url('icons/spellchess.svg'); }
+[data-icon="\e91a"] { --variant-icon: url('icons/brotherhood.svg'); }
+[data-icon="\e91b"] { --variant-icon: url('icons/randomdice.svg'); }
+[data-icon="\e91c"] { --variant-icon: url('icons/monster.svg'); }
+
+:is(
+  [data-icon="\e910"], [data-icon="\e911"], [data-icon="\e912"],
+  [data-icon="\e913"], [data-icon="\e914"], [data-icon="\e915"],
+  [data-icon="\e916"], [data-icon="\e917"], [data-icon="\e918"],
+  [data-icon="\e919"], [data-icon="\e91a"], [data-icon="\e91b"], [data-icon="\e91c"]
+)::before {
+  content: '';
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  background-color: currentColor;
+  -webkit-mask: var(--variant-icon) center / contain no-repeat;
+  mask: var(--variant-icon) center / contain no-repeat;
+}

@@ -84,6 +84,8 @@ async def BOT_task(bot: User, app_state: PychessGlobalAppState) -> None:
             event = parse_bot_event(line, "game", game.id)
             if event is None or event.get("type") != "gameState":
                 continue
+            if game.turn_player != bot.username:
+                continue
             # print("   +++ game_queues get()", event)
             try:
                 if random_mover:

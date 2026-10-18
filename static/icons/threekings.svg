@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">
+  <g fill="#70787d">
+    <path d="M8 19h8v-4h3v-5h-3V6h-8v4H5v5h3z" transform="translate(-1 1) scale(.82)"/>
+    <path d="M8 19h8v-4h3v-5h-3V6h-8v4H5v5h3z" transform="translate(17 0) scale(.82)"/>
+    <path d="M8 19h8v-4h3v-5h-3V6h-8v4H5v5h3z" transform="translate(8 17) scale(.82)"/>
+    <path d="M3 25c2.8-4.3 6.2-6.5 10.2-6.5S20.6 20.7 23 25l-2.2 12H5.2z" transform="translate(-1 -1) scale(.82)"/>
+    <path d="M3 25c2.8-4.3 6.2-6.5 10.2-6.5S20.6 20.7 23 25l-2.2 12H5.2z" transform="translate(17 -2) scale(.82)"/>
+    <path d="M3 25c2.8-4.3 6.2-6.5 10.2-6.5S20.6 20.7 23 25l-2.2 12H5.2z" transform="translate(8 15) scale(.82)"/>
+  </g>
+</svg>

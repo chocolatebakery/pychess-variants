@@ -31,6 +31,7 @@
     "fairy-stockfish-nnue.wasm": "^1.1.12",
     "ffish-alice-es6": "^0.0.1",
     "ffish-es6": "^0.7.10",
+    "ffish-fsx-es6": "file:vendor/ffish-fsx-es6",
     "gettext.js": "^2.0.3",
     "highcharts": "^13.1.1",
     "howler": "^2.2.3",
@@ -99,7 +100,7 @@
       "^gettext": "gettext.js"
     },
     "transformIgnorePatterns": [
-      "/node_modules/(?!ffish-es6|ffish-alice-es6|chessgroundx|preact)"
+      "/node_modules/(?!ffish-es6|ffish-alice-es6|ffish-fsx-es6|chessgroundx|preact)"
     ]
   }
 }

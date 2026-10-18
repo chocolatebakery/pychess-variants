@@ -31,6 +31,8 @@ import { notify } from './notification';
 import { PyChessModel } from './types';
 import { MsgBoard } from './messages';
 import { variantPanels } from './lobby/layer1';
+import { manualTestsView } from './lobby/manualTests';
+import { sessionScoreView } from './sessionScore';
 import { shouldShowRatingRange } from './lobby/ratingRange';
 import {
     Post,
@@ -220,6 +222,13 @@ export class LobbyController {
         );
 
         patch(document.querySelector('.seekbuttons') as HTMLElement, h('div.seekbuttons', this.renderSeekButtons()));
+        patch(document.getElementById('manual-tests') as HTMLElement, manualTestsView((variant, color, minutes, increment) => {
+            this.doSend({
+                type: 'create_ai_challenge', variant, color, minutes, increment,
+                fen: '', profileid: 'Random-Mover', rm: true, level: 0,
+                byoyomiPeriod: 0, chess960: false, rated: false,
+            });
+        }));
         patch(document.querySelector('.seekdialog') as HTMLElement, this.renderSeekDialog());
 
         const id01modal = document.getElementById('id01') as HTMLElement;
@@ -2162,6 +2171,8 @@ export function lobbyView(model: PyChessModel): VNode[] {
         h('div#variants-catalog'),
         h('aside.sidebar-second', [
             h('div.seekbuttons'),
+            h('div#manual-tests'),
+            sessionScoreView(username),
             h('div.lobby-count', [
                 h('a', { attrs: { href: '/players' } }, [h('counter#u_cnt')]),
                 h('a', { attrs: { href: '/games' } }, [h('counter#g_cnt')]),

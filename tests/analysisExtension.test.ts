@@ -120,6 +120,7 @@ test('move application can be rejected before the analysis board is mutated', ()
 
 test('extension can disable local computer search independently of ordinary analysis capability', () => {
     const ctrl = Object.create(AnalysisController.prototype) as any;
+    ctrl.variant = { name: 'chess' };
     Object.defineProperty(ctrl, 'analysisExtension', {
         value: { allowComputerSearch: () => false },
         configurable: true,
@@ -132,6 +133,8 @@ test('extension can disable local computer search independently of ordinary anal
         configurable: true,
     });
     expect(ctrl.isLocalAnalysisAllowedByExtension()).toBe(true);
+    ctrl.variant = { name: 'spell-chess' };
+    expect(ctrl.isLocalAnalysisAllowedByExtension()).toBe(false);
 });
 
 test('extension session suspension stops the engine without overwriting the saved engine preference', () => {

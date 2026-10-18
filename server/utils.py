@@ -40,6 +40,7 @@ from fairy import (
     modded_variant,
     validate_fen,
 )
+from fsx import FSX_VARIANTS
 from game import Game, StaleMovePersistenceError
 from newid import new_id
 from random_modes import (
@@ -565,6 +566,10 @@ async def _load_game_from_doc(
 
     if game.status <= STARTED:
         app_state.games[game_id] = game
+        if variant == "monster" and game.board.legal_moves() == ["0000"]:
+            # Recover a process restart between persisting the move and its forced pass.
+            game.create_steps()
+            await game.play_move("0000", automatic_pass=True)
 
     # log.debug("load_game() parse DONE")
     return game
@@ -909,6 +914,13 @@ async def new_game(
     if random_context is not None:
         engine = wplayer if wplayer.bot else bplayer
         if engine.bot and engine.username in ("Fairy-Stockfish", "Alice-Stockfish"):
+            if variant in FSX_VARIANTS:
+                remove_seek(app_state.seeks, seek)
+                return {
+                    "type": "error",
+                    "message": "FSX variants currently require a human opponent or Random-Mover. "
+                    "The regular fishnet engine does not support these rules.",
+                }
             if variant == "fogofwar":
                 remove_seek(app_state.seeks, seek)
                 return {
@@ -1677,8 +1689,8 @@ def sanitize_fen(variant, initial_fen, chess960, base=False):
     if sf_validate != FEN_OK and variant != "duck":
         return False, ""
 
-    if is_catalogued_variant(variant):
-        # Community rules can allow no kings, different royal pieces, or pieces
+    if is_catalogued_variant(variant) or variant in FSX_VARIANTS:
+        # Community/FSX rules can allow no kings, different royal pieces, or pieces
         # absent from the starting position. After the engine safety checks,
         # trust the loaded definition instead of applying first-class rules.
         return True, initial_fen

@@ -1,0 +1,48 @@
+.spellchess piece.p-piece.white {
+    background-image: url('../../images/pieces/spellchess/merida/wP.svg');
+}
+.spellchess piece.n-piece.white {
+    background-image: url('../../images/pieces/spellchess/merida/wN.svg');
+}
+.spellchess piece.b-piece.white {
+    background-image: url('../../images/pieces/spellchess/merida/wB.svg');
+}
+.spellchess piece.r-piece.white {
+    background-image: url('../../images/pieces/spellchess/merida/wR.svg');
+}
+.spellchess piece.q-piece.white {
+    background-image: url('../../images/pieces/spellchess/merida/wQ.svg');
+}
+.spellchess piece.k-piece.white {
+    background-image: url('../../images/pieces/spellchess/merida/wK.svg');
+}
+.spellchess piece.f-piece.white {
+    background-image: url('../../images/pieces/spellchess/merida/wF.svg');
+}
+.spellchess piece.j-piece.white {
+    background-image: url('../../images/pieces/spellchess/merida/wJ.svg');
+}
+.spellchess piece.p-piece.black {
+    background-image: url('../../images/pieces/spellchess/merida/bP.svg');
+}
+.spellchess piece.n-piece.black {
+    background-image: url('../../images/pieces/spellchess/merida/bN.svg');
+}
+.spellchess piece.b-piece.black {
+    background-image: url('../../images/pieces/spellchess/merida/bB.svg');
+}
+.spellchess piece.r-piece.black {
+    background-image: url('../../images/pieces/spellchess/merida/bR.svg');
+}
+.spellchess piece.q-piece.black {
+    background-image: url('../../images/pieces/spellchess/merida/bQ.svg');
+}
+.spellchess piece.k-piece.black {
+    background-image: url('../../images/pieces/spellchess/merida/bK.svg');
+}
+.spellchess piece.f-piece.black {
+    background-image: url('../../images/pieces/spellchess/merida/bF.svg');
+}
+.spellchess piece.j-piece.black {
+    background-image: url('../../images/pieces/spellchess/merida/bJ.svg');
+}

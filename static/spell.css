@@ -1,0 +1,44 @@
+.spell-controls, .spell-reserves {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 4px 0;
+}
+.spell-controls .spell-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex: 1 1 0;
+    min-width: 0;
+    height: 40px;
+    padding: 2px 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    font-size: 14px;
+    color: var(--font-color);
+    background: var(--bg-color2);
+}
+.spell-button[aria-pressed="true"] {
+    outline: 2px solid var(--link-color);
+    outline-offset: -2px;
+}
+.spell-controls button:disabled { opacity: 0.5; cursor: default; }
+.spell-potion { display: block; width: 28px; height: 28px; flex: 0 0 28px; }
+.spell-reserves > span { display: flex; align-items: center; gap: 5px; }
+.spell-controls strong, .spell-reserves strong { min-width: 1ch; font-variant-numeric: tabular-nums; }
+.spell-cooldown { font-size: 12px; min-width: 14px; text-align: center; border: 1px solid currentColor; }
+.spell-cancel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 40px;
+    flex: 0 0 36px;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    color: var(--font-color);
+    background: var(--bg-color2);
+}
+.spell-targeting cg-board { cursor: crosshair; }
