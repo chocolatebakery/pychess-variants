@@ -184,7 +184,7 @@ customPiece1 = p:mKmDmA
                     "level": 4,
                 },
             )
-        select.assert_called_once_with(mode, None)
+        select.assert_called_once_with(mode, None, recent_entry_ids=[])
         return json.loads(ws.send_str.await_args.args[0])
 
     async def test_random_mode_ai_games_resolve_every_supported_pool_entry(self):
@@ -227,7 +227,7 @@ customPiece1 = p:mKmDmA
                     self.assertEqual(response["type"], "new_game")
                     created = self.state.games[response["gameId"]]
                     self.assertEqual(created.variant, entry.variant)
-                    self.assertEqual(created.random_context["poolVersion"], 7)
+                    self.assertEqual(created.random_context["poolVersion"], 8)
                     self.assertIs(created.bplayer, self.opponent)
                     self.assertTrue(created.board.legal_moves())
                     if entry.variant == "fogofwar":
@@ -266,14 +266,59 @@ customPiece1 = p:mKmDmA
                         response = await self.rematch(current, AsyncMock())
 
                     self.assertEqual(response["type"], "new_game")
-                    randbelow.assert_called_once_with(27 if fsx_available() else 23)
+                    randbelow.assert_called_once_with(29 if fsx_available() else 24)
                     rematch = self.state.games[response["gameId"]]
                     self.assertEqual(rematch.variant, selected.variant)
-                    self.assertEqual(rematch.random_context["poolVersion"], 7)
+                    self.assertEqual(rematch.random_context["poolVersion"], 8)
                     self.assertEqual(rematch.random_context["previousEntryId"], "dice-" + variant)
                     self.assertEqual(current.variant, variant)
                     self.assertEqual(current.random_context["poolVersion"], 3)
                     await rematch.game_ended(self.player, "resign")
+
+    async def test_last_five_survive_rematches_and_database_reload(self):
+        for mode in RANDOM_MODE_POOLS:
+            for opponent in (self.opponent, self.state.users["Random-Mover"]):
+                with self.subTest(mode=mode, bot=opponent.bot):
+                    seek = Seek(id8(), self.player, mode, color="w", player1=self.player)
+                    with patch("random_modes.secrets.randbelow", return_value=0):
+                        response = await join_seek(self.state, opponent, seek)
+                    self.assertEqual(response["type"], "new_game")
+                    current = self.state.games[response["gameId"]]
+                    history = [current.random_context["entryId"]]
+                    self.assertEqual(current.random_context["recentEntryIds"], history)
+                    for _ in range(8):
+                        for _ in range(4):
+                            await current.play_move(current.board.legal_moves()[0])
+                        await current.game_ended(self.player, "resign")
+                        saved_context = json.loads(json.dumps(current.random_context))
+                        self.state.games.pop(current.id, None)
+                        restored = await load_game(self.state, current.id)
+                        self.assertIsNotNone(restored)
+                        current = restored
+                        self.assertEqual(current.random_context, saved_context)
+                        if not opponent.bot:
+                            current.rematch_offers.add(opponent.username)
+                        with patch("random_modes.secrets.randbelow", return_value=0):
+                            response = await self.rematch(current, AsyncMock())
+                        self.assertEqual(response["type"], "new_game")
+                        rematch = self.state.games[response["gameId"]]
+                        entry_id = rematch.random_context["entryId"]
+                        self.assertNotIn(entry_id, history[-5:])
+                        history.append(entry_id)
+                        self.assertEqual(rematch.random_context["recentEntryIds"], history[-5:])
+                        self.assertEqual(rematch.random_context["previousGameId"], current.id)
+                        self.assertEqual(current.random_context, saved_context)
+                        self.assertIs(rematch.wplayer, current.bplayer)
+                        self.assertIs(rematch.bplayer, current.wplayer)
+                        current = rematch
+                    await current.game_ended(self.player, "resign")
+                    # A new series does not inherit this rematch chain's history.
+                    seek = Seek(id8(), self.player, mode, color="w", player1=self.player)
+                    with patch("random_modes.secrets.randbelow", return_value=0):
+                        response = await join_seek(self.state, opponent, seek)
+                    fresh = self.state.games[response["gameId"]]
+                    self.assertEqual(fresh.random_context["recentEntryIds"], [history[0]])
+                    await fresh.game_ended(self.player, "resign")
 
     async def test_fsx_computed_ai_is_rejected_before_creating_a_game(self):
         for entry in RANDOM_DICE_POOL.entries:
@@ -288,7 +333,7 @@ customPiece1 = p:mKmDmA
 
     @unittest.skipUnless(fsx_available(), "Requires FSX extension")
     async def test_direct_fsx_challenges_force_casual_random_mover(self):
-        for variant in ("monster", "rifle-chess", "spell-chess"):
+        for variant in ("monster", "rifle-chess", "spell-chess", "cylinder"):
             for color in ("w", "b"):
                 with self.subTest(variant=variant, color=color):
                     ws = AsyncMock()

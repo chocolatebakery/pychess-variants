@@ -11,12 +11,13 @@
 [data-icon="\e91a"] { --variant-icon: url('icons/brotherhood.svg'); }
 [data-icon="\e91b"] { --variant-icon: url('icons/randomdice.svg'); }
 [data-icon="\e91c"] { --variant-icon: url('icons/monster.svg'); }
+[data-icon="\e91d"] { --variant-icon: url('icons/cylinder.svg'); }
 
 :is(
   [data-icon="\e910"], [data-icon="\e911"], [data-icon="\e912"],
   [data-icon="\e913"], [data-icon="\e914"], [data-icon="\e915"],
   [data-icon="\e916"], [data-icon="\e917"], [data-icon="\e918"],
-  [data-icon="\e919"], [data-icon="\e91a"], [data-icon="\e91b"], [data-icon="\e91c"]
+  [data-icon="\e919"], [data-icon="\e91a"], [data-icon="\e91b"], [data-icon="\e91c"], [data-icon="\e91d"]
 )::before {
   content: '';
   display: inline-block;

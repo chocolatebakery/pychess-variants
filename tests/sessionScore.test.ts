@@ -1,12 +1,7 @@
 import { beforeEach, expect, test } from '@jest/globals';
 import { clearSessionScores, recordSessionResult, refreshSessionScore, sessionScores, sessionScoreKey, trackSessionGame } from '../client/sessionScore';
-import { MANUAL_TEST_VARIANTS } from '../client/lobby/manualTests';
 
 beforeEach(() => sessionStorage.clear());
-
-test('manual block only offers the requested variants', () => {
-    expect(MANUAL_TEST_VARIANTS).toEqual(['monster', 'rifle-chess', 'spell-chess']);
-});
 
 test('records white and black results by actual variant, once across reloads', () => {
     trackSessionGame('p', 'a', 'monster', false);

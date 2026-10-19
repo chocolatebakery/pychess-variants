@@ -236,6 +236,7 @@ export const SVG_VARIANT_ICONS: Record<string, string> = {
     brotherhood: '\ue91a',
     randomdice: '\ue91b',
     monster: '\ue91c',
+    cylinder: '\ue91d',
 };
 
 export const PIECE_FAMILIES: Record<string, PieceFamily> = {
@@ -919,6 +920,14 @@ export const VARIANTS: Record<string, Variant> = {
         tooltip: 'White moves twice per turn with a king and four pawns. Capture the opposing king to win.',
         startFen: 'rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1',
         icon: SVG_VARIANT_ICONS.monster, boardFamily: 'standard8x8', pieceFamily: 'standard',
+        pieceRow: ['k', 'q', 'r', 'b', 'n', 'p'], ratingEnabled: false, aiDisabled: true,
+        rules: { enPassant: true },
+    }),
+    cylinder: variant({
+        name: 'cylinder', displayName: 'Cylinder Chess',
+        tooltip: 'The a- and h-files are connected. Pieces can cross the edge of the board. No castling.',
+        startFen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1',
+        icon: SVG_VARIANT_ICONS.cylinder, boardFamily: 'standard8x8', pieceFamily: 'standard',
         pieceRow: ['k', 'q', 'r', 'b', 'n', 'p'], ratingEnabled: false, aiDisabled: true,
         rules: { enPassant: true },
     }),
@@ -2158,6 +2167,8 @@ const RANDOM_MODE_RESULT_VARIANT_KEYS = new Set<string>([
     'brotherhood',
     'spell-chess',
     'monster',
+    'spartan',
+    'cylinder',
     'shogi',
     'xiangqi',
     'janggi',

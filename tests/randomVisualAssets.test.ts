@@ -7,7 +7,7 @@ import { SVG_VARIANT_ICONS, VARIANTS } from '../client/variants';
 const icons = {
     knightmate: 'knightmate', atomar: 'atomar', berolina: 'berolina', extinction: 'extinction',
     kinglet: 'kinglet', threekings: 'threekings', torpedo: 'torpedo', losers: 'losers',
-    'rifle-chess': 'riflechess', 'spell-chess': 'spellchess', brotherhood: 'brotherhood', randomdice: 'randomdice', monster: 'monster',
+    'rifle-chess': 'riflechess', 'spell-chess': 'spellchess', brotherhood: 'brotherhood', randomdice: 'randomdice', monster: 'monster', cylinder: 'cylinder',
 };
 
 test('supplied variant logos have unique SVG mask keys and valid local assets', () => {

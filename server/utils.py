@@ -48,6 +48,7 @@ from random_modes import (
     is_random_mode,
     previous_entry_id_from_context,
     random_context_for_entry,
+    recent_entry_ids_from_context,
     select_random_mode_entry,
 )
 from seek import (
@@ -856,13 +857,16 @@ async def new_game(
     random_context = None
     if is_random_mode(seek.variant):
         previous_entry_id = previous_entry_id_from_context(seek.random_context)
+        recent_entry_ids = recent_entry_ids_from_context(seek.random_context)
         previous_game_id = (
             str(seek.random_context.get("previousGameId"))
             if seek.random_context and seek.random_context.get("previousGameId")
             else None
         )
         try:
-            random_entry = select_random_mode_entry(seek.variant, previous_entry_id)
+            random_entry = select_random_mode_entry(
+                seek.variant, previous_entry_id, recent_entry_ids=recent_entry_ids
+            )
         except RandomModeError as exc:
             log.exception("Failed to resolve random mode %s", seek.variant)
             remove_seek(app_state.seeks, seek)
@@ -875,6 +879,7 @@ async def new_game(
             random_entry,
             previous_entry_id=previous_entry_id,
             previous_game_id=previous_game_id,
+            recent_entry_ids=recent_entry_ids,
         )
         log.info(
             "Resolved random mode %s to %s chess960=%s entry=%s",

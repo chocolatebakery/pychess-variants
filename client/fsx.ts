@@ -1,6 +1,6 @@
 import type { ModuleOptions, FairyStockfish } from 'ffish-fsx-es6';
 
-export const FSX_VARIANTS = new Set(['rifle-chess', 'brotherhood', 'spell-chess', 'monster']);
+export const FSX_VARIANTS = new Set(['rifle-chess', 'brotherhood', 'spell-chess', 'monster', 'cylinder']);
 
 export async function ffishFsxModule(options: ModuleOptions = {}): Promise<FairyStockfish> {
     // Keep Emscripten's browser/Node loader intact, outside the browser bundle.
@@ -28,4 +28,10 @@ startFen = rnbqkbnr/pppppppp/8/8/8/8/2PPPP2/4K3 w kq - 0 1
 multimoves = 2 1
 extinctionPieceTypes = k
 promotionPieceTypes = nbrq
+
+# FSX variants.ini: files wrap around the board; castling is disabled.
+[cylinder:chess]
+startFen = rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1
+cylindrical = true
+castling = false
 `;

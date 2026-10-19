@@ -112,6 +112,7 @@ const PGN_VARIANT_ALIASES: Readonly<Record<string, string>> = Object.freeze({
     spellchess: 'spell-chess',
     'brotherhood chess': 'brotherhood',
     'monster chess': 'monster',
+    'cylinder chess': 'cylinder',
 });
 
 export function parsePgnVariantTag(rawVariant: string): PgnVariantInfo {

@@ -234,7 +234,7 @@ export class RoundController extends GameController {
         this.chessground.set({
             orientation: this.variant.name === 'racingkings' ? 'white' : this.mycolor,
             turnColor: this.turnColor,
-            autoCastle: this.variant.name !== 'cambodian', // TODO make more generic
+            autoCastle: !['cambodian', 'cylinder'].includes(this.variant.name), // TODO make more generic
         });
 
         if (this.spectator) {
@@ -256,7 +256,7 @@ export class RoundController extends GameController {
                     },
                 },
                 premovable: {
-                    enabled: true,
+                    enabled: this.variant.name !== 'cylinder',
                     premoveFunc: premoveForVariant(this.variant.name, this.chess960, this.variant.board.dimensions),
                     predropFunc: predrop(this.variant.name, this.variant.board.dimensions),
                     events: {

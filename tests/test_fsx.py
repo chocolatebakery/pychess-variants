@@ -16,7 +16,7 @@ from variants import RATED_VARIANTS, get_server_variant
 
 class EngineRoutingTest(unittest.TestCase):
     def test_official_and_alice_keep_their_engines(self):
-        for variant in ("chess", "atomic", "berolina", "kinglet", "torpedo"):
+        for variant in ("chess", "atomic", "berolina", "kinglet", "torpedo", "spartan"):
             self.assertIs(engine_for_variant(variant), sf)
         self.assertIs(engine_for_variant("alice"), sf_alice)
 
@@ -51,6 +51,26 @@ class EngineRoutingTest(unittest.TestCase):
 
 @unittest.skipUnless(fsx_available(), "FSX extension not installed on this platform")
 class FsxRulesTest(unittest.TestCase):
+    def test_cylinder_rook_and_bishop_wrap_around_blocked_orthodox_paths(self):
+        for fen, move in (
+            ("4k3/8/8/8/8/8/4K3/RP5n w - - 0 1", "a1h1"),
+            ("4k3/8/8/8/8/8/1P5r/B3K3 w - - 0 1", "a1h2"),
+        ):
+            with self.subTest(move=move):
+                board = FairyBoard("cylinder", fen)
+                self.assertNotIn(move, FairyBoard("chess", fen).legal_moves())
+                self.assertIn(move, board.legal_moves())
+                board.push(move)
+                self.assertEqual(board.ply, 1)
+                board.pop()
+                self.assertEqual(board.fen, fen)
+
+    def test_cylinder_disables_castling(self):
+        fen = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"
+        board = FairyBoard("cylinder", fen)
+        self.assertNotIn("e1h1", board.legal_moves())
+        self.assertNotIn("e1a1", board.legal_moves())
+
     def test_monster_requires_a_black_pass_between_white_moves(self):
         board = FairyBoard("monster")
         initial = board.fen

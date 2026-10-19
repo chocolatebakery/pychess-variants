@@ -1,10 +1,11 @@
 # Logotipos e pecas dos modos Random
 
-Atualizado em 2026-10-18: integrado o pack `random_wild_svg_pack_complete`.
+Atualizado em 2026-10-19: integrado o pack `random_wild_svg_pack_complete`
+e o novo logotipo Cylinder.
 Os 31 SVGs foram movidos para as pastas do projeto, sem alterar os desenhos.
 O README original ficou em `static/images/pieces/random-wild-pack.md`.
 
-Random Dice tem agora 27 entradas quando FSX esta instalado; Wild 29 mantem
+Random Dice tem agora 29 entradas quando FSX esta instalado; Wild 29 mantem
 as suas 6 entradas. A integracao dos motores esta em `FSX-no-Site.md`.
 
 ## 1. Logotipos integrados
@@ -22,7 +23,9 @@ as suas 6 entradas. A integracao dos motores esta em `FSX-no-Site.md`.
 | Rifle Chess | `riflechess.svg` | Ativo no Dice com FSX |
 | Spell Chess | `spellchess.svg` | Ativo no Dice com FSX |
 | Brotherhood | `brotherhood.svg` | Ativo no Dice com FSX |
-| Monster Chess | `monster.svg` | Copiado de `../new_icons/monster.svg`; ativo no Dice e testes |
+| Monster Chess | `monster.svg` | Copiado de `../new_icons/monster.svg`; ativo no Dice |
+| Cylinder Chess | `cylinder.svg` | SVG fornecido, ativo no Dice com FSX |
+| Spartan | `spartan.svg` | Recursos e icone nativo existentes preservados |
 
 Random Dice passou a usar `static/icons/randomdice.svg`, uma versao com os
 pontos transparentes derivada do `dice.svg` existente, que foi preservado.
@@ -69,11 +72,13 @@ familia `spellchess`, disponivel para metadata builtin de `spell-chess`.
 
 Spell Chess esta agora ligado ao terceiro motor, com controlos de Freeze/Jump,
 reservas, cooldowns e zonas persistidas no FEN. Rifle e Brotherhood reutilizam
-pecas normais e tambem estao no Dice, tal como Monster. Sem FSX instalado, estas quatro entradas
-sao excluidas do sorteio.
+pecas normais e tambem estao no Dice, tal como Monster e Cylinder. Sem FSX
+instalado, estas cinco entradas sao excluidas do sorteio.
 
 Extinction, Kinglet, Three Kings e Torpedo continuam a reutilizar pecas normais.
-Monster tambem usa o set normal; nao exige novos SVGs de pecas nem recompilacao.
+Monster e Cylinder tambem usam o set normal; nao exigem novos SVGs de pecas
+nem recompilacao. Spartan usa a familia `spartan` ja existente, com estilos
+`spartan0` e `spartan1`, incluindo todas as pecas especiais das negras.
 Os recursos existentes de Orda, Seirawan, Capablanca, Duck, Hoppel-Poppel e
 Makruk foram mantidos.
 

@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-FSX_VARIANTS = frozenset(("rifle-chess", "brotherhood", "spell-chess", "monster"))
+FSX_VARIANTS = frozenset(("rifle-chess", "brotherhood", "spell-chess", "monster", "cylinder"))
 
 try:
     import pyffish_fsx as _fsx

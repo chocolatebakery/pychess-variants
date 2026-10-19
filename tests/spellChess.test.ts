@@ -16,7 +16,7 @@ test('FSX INI stays identical on the client and server', () => {
 });
 
 test.each([
-    ['Rifle Chess', 'rifle-chess'], ['Spell Chess', 'spell-chess'], ['Brotherhood Chess', 'brotherhood'], ['Monster Chess', 'monster'],
+    ['Rifle Chess', 'rifle-chess'], ['Spell Chess', 'spell-chess'], ['Brotherhood Chess', 'brotherhood'], ['Monster Chess', 'monster'], ['Cylinder Chess', 'cylinder'],
 ])('PGN recognizes the human-readable %s header', (header, variant) => {
     expect(parsePgnVariantTag(header).variant).toBe(variant);
 });

@@ -37,6 +37,7 @@ SVG_VARIANT_ICONS: dict[str, str] = {
     "brotherhood": "\ue91a",
     "randomdice": "\ue91b",
     "monster": "\ue91c",
+    "cylinder": "\ue91d",
 }
 
 
@@ -172,6 +173,13 @@ class ServerVariants(Enum):
         legal_moves_need_history=True,
         move_encoding=encode_move_monster,
         move_decoding=decode_move_monster,
+    )
+    CYLINDER = Variant(
+        "cylinder",
+        "cylinder",
+        _("Cylinder Chess"),
+        SVG_VARIANT_ICONS["cylinder"],
+        rating_enabled=False,
     )
     RACINGKINGS = Variant("°", "racingkings", _("Racing Kings"), "🚗")
     RACINGKINGS960 = Variant("°", "racingkings", _("Racing Kings 1440"), "🚙", chess960=True)

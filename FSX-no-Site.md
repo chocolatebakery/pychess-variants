@@ -1,12 +1,12 @@
 # Terceiro motor: Fairy-Stockfish-X
 
-Integrado em 2026-10-18, mantendo os motores oficial e Alice separados.
+Integrado em 2026-10-18 e atualizado em 2026-10-19, mantendo os motores oficial e Alice separados.
 
 | Motor | Servidor | Browser | Variantes |
 |---|---|---|---|
 | Oficial | `pyffish` | `ffish-es6` | Variantes anteriores, exceto Alice |
 | Alice | `pyffish_alice` | `ffish-alice-es6` | Alice |
-| FSX | `pyffish_fsx` | `ffish-fsx-es6` | Rifle Chess, Brotherhood, Spell Chess, Monster Chess |
+| FSX | `pyffish_fsx` | `ffish-fsx-es6` | Rifle Chess, Brotherhood, Spell Chess, Monster Chess, Cylinder Chess |
 
 ## Instalar em Linux/WSL
 
@@ -39,14 +39,14 @@ PYTHONPATH=server uv run python -c 'from fsx import fsx_available; print(fsx_ava
 ```
 
 No Python Windows, a dependencia FSX nao e instalada automaticamente: executa
-o servidor no WSL para jogar estas quatro variantes. Sem `pyffish_fsx`, o sorteio
-exclui apenas essas quatro entradas; nunca as executa com regras de chess normal.
+o servidor no WSL para jogar estas cinco variantes. Sem `pyffish_fsx`, o sorteio
+exclui apenas essas cinco entradas; nunca as executa com regras de chess normal.
 
 ## Recursos e deploy
 
 - `vendor/ffish-fsx-es6`: JS/WASM da mesma compilacao, tipos e GPL.
 - `vendor/pyffish-fsx`: fonte correspondente e GPL; o pacote gera `pyffish_fsx`.
-- `variants-fsx.ini` e `client/fsx.ts`: definicoes Rifle/Brotherhood/Monster.
+- `variants-fsx.ini` e `client/fsx.ts`: definicoes Rifle/Brotherhood/Monster/Cylinder.
   Spell Chess e builtin. O INI oficial do site nao foi substituido.
 - `cp2static.sh`: copia JS e WASM FSX para `static/`, com nomes separados.
   O cliente carrega o modulo ES6 FSX apenas nas variantes que o usam.
@@ -65,10 +65,27 @@ da wheel exportada do Ubuntu; o build Docker nao foi executado nesta verificacao
 
 ## Partidas e limites
 
-Random Dice tem 27 entradas com pesos iguais quando FSX esta instalado.
-A versao do pool passou a 7; as revanches continuam a excluir so a entrada
-anterior. Wild 29 mantem o pool ICC anterior. Nao se criaram modos de jogo ou
-ratings independentes para estas variantes.
+Random Dice tem 29 entradas com pesos iguais quando FSX esta instalado,
+ou 24 sem FSX. A versao do pool passou a 8, acrescentando Spartan no motor
+oficial e Cylinder no FSX. Wild 29 mantem o pool ICC anterior e os seus pesos.
+A criacao normal continua limitada a Wild 29 e Random Dice, sem novos ratings.
+
+Nas revanches, ambos os modos excluem as ultimas cinco entradas da mesma
+serie. O servidor guarda `recentEntryIds` no contexto `rc` de cada partida,
+incluindo apos reload da base de dados; nao depende do armazenamento do browser.
+Uma serie nova comeca sem esse historico. Partidas antigas sem a lista comecam
+pela ultima entrada conhecida. Se um pool reduzido ficar sem candidatos,
+liberta-se primeiro a exclusao mais antiga. Os pesos dos candidatos restantes
+e o sorteio `secrets.randbelow()` mantem-se; nao se exige esgotar todo o pool.
+Wild 29 tem seis entradas, pelo que, apos cinco resultados distintos, resta
+uma unica candidata ate a entrada mais antiga voltar a ficar disponivel.
+
+Cylinder liga as colunas a/h: as pecas podem atravessar a borda do tabuleiro.
+Nao permite roque e reutiliza as pecas normais. A posicao inicial explicita
+sem direitos de roque evita normalizacoes diferentes ao desfazer lances.
+Os premoves ficam desativados nesta variante, pois a geometria padrao do
+Chessground nao calcula trajetos cilindricos. Os lances legais usam o FSX.
+Spartan reutiliza as regras, os dois sets de pecas e o icone ja existentes.
 
 Rifle mantem o atacante na origem quando captura. Brotherhood impede capturas
 entre pecas do mesmo tipo, exceto reis. Spell Chess oferece Freeze e Jump, com
@@ -78,18 +95,16 @@ O codec de Spell Chess conserva o token composto completo, incluindo promocao.
 O PGN usa alvos explicitos, por exemplo `f@e7,e4`: a notacao nativa `e4/F`
 omite a casa-alvo e nao e suficiente para reproduzir uma partida sem ambiguidade.
 
-Estas variantes funcionam entre humanos e contra Random-Mover. A AI calculada
+As cinco variantes FSX funcionam entre humanos e contra Random-Mover. A AI calculada
 e a avaliacao automatica estao desativadas para elas: o worker/motor de analise
 oficial nao implementa estas regras. Para as disponibilizar sera necessario
 integrar tambem um executavel FSX UCI compativel no worker, nao apenas pyffish.
 A reproducao manual de partidas e a importacao PGN usam o motor de regras FSX.
 
-## Monster Chess e testes diretos
+## Monster Chess
 
-O lobby tem um bloco separado `Tests / Random-Mover` com Monster, Rifle e Spell
-Chess, escolha de cor, minutos e incremento. Estas partidas nao sorteiam uma
-variante: usam diretamente a escolhida, sempre casual e contra Random-Mover.
-A criacao normal continua a oferecer apenas Wild 29 e Random Dice.
+O bloco temporario `Tests / Random-Mover` foi removido do lobby. Monster,
+Rifle e Spell continuam disponiveis nos sorteios Random Dice.
 
 Monster copia a definicao `[monster:extinction]` do FSX: rei branco em e1 e
 peoes c2/d2/e2/f2 contra o exercito negro normal. As brancas jogam duas vezes,
@@ -109,7 +124,7 @@ Nao e necessario recompilar JS/WASM ou pyffish para esta adicao ao INI.
 
 O lobby e a pagina de jogo mostram resultados por variante real: tu, empates e
 adversario, com totais. Conta partidas em que participaste enquanto estavam
-ativas neste separador, incluindo as de testes e as sorteadas nos dois modos.
+ativas neste separador, incluindo as sorteadas nos dois modos.
 Chess960 tem linha separada. Resultados repetidos por reload/reconexao contam
 so uma vez; partidas abortadas, erros de motor e arquivos abertos nao contam.
 

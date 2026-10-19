@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" viewBox="0 0 50 50">
+  <g fill="#70787d" stroke="#70787d" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Wrapped board / cylinder -->
+    <ellipse cx="25" cy="19" rx="11.8" ry="4.1" fill="none" stroke-width="2.2"/>
+    <path d="M13.2 19v13.2c0 2.2 5.3 4.1 11.8 4.1s11.8-1.9 11.8-4.1V19" fill="none" stroke-width="2.2"/>
+    <ellipse cx="25" cy="32.2" rx="11.8" ry="4.1" fill="none" stroke-width="2.2"/>
+
+    <!-- Board divisions -->
+    <path d="M18 15.8v19.5M22 15.1v20.6M28 15.1v20.6M32 15.8v19.5" fill="none" stroke-width="1.5" opacity=".9"/>
+    <path d="M14.7 23.4c2.4 1.3 6.1 2 10.3 2s7.9-.7 10.3-2" fill="none" stroke-width="1.4" opacity=".85"/>
+    <path d="M14.7 27.7c2.4 1.3 6.1 2 10.3 2s7.9-.7 10.3-2" fill="none" stroke-width="1.4" opacity=".85"/>
+
+    <!-- Rook on top -->
+    <path d="M20.7 13.2h8.6l-.7 2.7h-7.2z" stroke="none"/>
+    <path d="M21.4 6.3h1.9v2.1h3.4V6.3h1.9v3.8h1.1v3H20.3v-3h1.1z" stroke="none"/>
+    <rect x="21.1" y="15.8" width="7.8" height="1.2" rx=".5" stroke="none"/>
+
+    <!-- Wrap-around arrows -->
+    <path d="M8.2 23.6c-.8-4.8.4-8.7 3.6-11.6 1.7-1.5 3.8-2.7 6.5-3.4" fill="none" stroke-width="2"/>
+    <path d="M16.2 5.9l2.6 2.1-3.3 1.1" stroke="none"/>
+    <path d="M41.8 27.6c.8 4.8-.4 8.7-3.6 11.6-1.7 1.5-3.8 2.7-6.5 3.4" fill="none" stroke-width="2"/>
+    <path d="M33.8 45.3l-2.6-2.1 3.3-1.1" stroke="none"/>
+  </g>
+</svg>

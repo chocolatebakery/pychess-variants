@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import NotRequired, TypedDict
 
@@ -8,6 +9,7 @@ from fsx import FSX_VARIANTS, fsx_available
 
 RANDOM_MODE_WILD29 = "wild29"
 RANDOM_MODE_DICE = "randomdice"
+RECENT_ENTRY_LIMIT = 5
 
 
 class RandomContext(TypedDict, total=False):
@@ -23,6 +25,7 @@ class RandomContext(TypedDict, total=False):
     rulesVersion: str
     previousEntryId: NotRequired[str]
     previousGameId: NotRequired[str]
+    recentEntryIds: list[str]
 
 
 @dataclass(frozen=True)
@@ -76,7 +79,7 @@ RANDOM_DICE_POOL = RandomModePool(
     mode=RANDOM_MODE_DICE,
     display_name="Random Dice",
     pool_id="random-dice-supported",
-    version=7,
+    version=8,
     entries=(
         RandomModeEntry("dice-atomic", "Atomic", "atomic"),
         RandomModeEntry("dice-orda", "Orda", "orda"),
@@ -109,6 +112,8 @@ RANDOM_DICE_POOL = RandomModePool(
             "dice-spellchess", "Spell Chess", "spell-chess", rules_version="fsx-0.0.88"
         ),
         RandomModeEntry("dice-monster", "Monster Chess", "monster", rules_version="fsx-0.0.88"),
+        RandomModeEntry("dice-spartan", "Spartan", "spartan"),
+        RandomModeEntry("dice-cylinder", "Cylinder Chess", "cylinder", rules_version="fsx-0.0.88"),
     ),
 )
 
@@ -145,20 +150,49 @@ def previous_entry_id_from_context(context: RandomContext | dict[str, object] | 
     return str(previous_entry_id) if previous_entry_id else None
 
 
-def select_random_mode_entry(mode: str, previous_entry_id: str | None = None) -> RandomModeEntry:
+def recent_entry_ids_from_context(
+    context: RandomContext | dict[str, object] | None,
+) -> list[str]:
+    if context is None:
+        return []
+    raw = context.get("recentEntryIds", [])
+    recent: list[str] = []
+    if isinstance(raw, list):
+        for entry_id in raw[-RECENT_ENTRY_LIMIT:]:
+            if isinstance(entry_id, str) and entry_id:
+                if entry_id in recent:
+                    recent.remove(entry_id)
+                recent.append(entry_id)
+    current = context.get("entryId") or context.get("previousEntryId")
+    if isinstance(current, str) and current:
+        if current in recent:
+            recent.remove(current)
+        recent.append(current)
+    return recent[-RECENT_ENTRY_LIMIT:]
+
+
+def select_random_mode_entry(
+    mode: str,
+    previous_entry_id: str | None = None,
+    *,
+    recent_entry_ids: Sequence[str] = (),
+) -> RandomModeEntry:
     pool = _pool(mode)
     available = [
         entry for entry in pool.entries if entry.variant not in FSX_VARIANTS or fsx_available()
     ]
-    candidates = [
-        entry
-        for entry in available
-        if previous_entry_id is None or entry.entry_id != previous_entry_id
-    ]
-    if not candidates:
-        candidates = available
-    if not candidates:
+    if not available:
         raise RandomModeError("Random mode pool has no entries: %s" % mode)
+    context: dict[str, object] = {"recentEntryIds": list(recent_entry_ids)}
+    if previous_entry_id:
+        context["previousEntryId"] = previous_entry_id
+    recent = recent_entry_ids_from_context(context)
+    candidates = [entry for entry in available if entry.entry_id not in recent]
+    # Small or reduced pools release the oldest restriction first, retaining
+    # the immediate-repeat exclusion whenever another entry is available.
+    while not candidates:
+        recent.pop(0)
+        candidates = [entry for entry in available if entry.entry_id not in recent]
     if any(entry.weight <= 0 for entry in candidates):
         raise RandomModeError("Random mode weights must be positive: %s" % mode)
 
@@ -177,6 +211,7 @@ def random_context_for_entry(
     *,
     previous_entry_id: str | None = None,
     previous_game_id: str | None = None,
+    recent_entry_ids: Sequence[str] = (),
 ) -> RandomContext:
     pool = _pool(mode)
     context: RandomContext = {
@@ -195,6 +230,15 @@ def random_context_for_entry(
         context["previousEntryId"] = previous_entry_id
     if previous_game_id:
         context["previousGameId"] = previous_game_id
+    context["recentEntryIds"] = recent_entry_ids_from_context(
+        {
+            "recentEntryIds": [
+                *recent_entry_ids,
+                *([previous_entry_id] if previous_entry_id else []),
+            ],
+            "entryId": entry.entry_id,
+        }
+    )
     return context
 
 
@@ -211,6 +255,7 @@ def rematch_context_for_game(
     if previous_entry_id:
         rematch_context["previousEntryId"] = str(previous_entry_id)
     rematch_context["previousGameId"] = game_id
+    rematch_context["recentEntryIds"] = recent_entry_ids_from_context(context)
     return rematch_context
 
 

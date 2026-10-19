@@ -53,7 +53,7 @@ All Python commands below should be run with `uv run ...` unless you have alread
 The project now targets Python 3.14+.
 
 This Random/Wild deployment also includes a separately named FSX rules engine
-for Rifle Chess, Brotherhood, Spell Chess and Monster Chess. See [FSX-no-Site.md](FSX-no-Site.md)
+for Rifle Chess, Brotherhood, Spell Chess, Monster Chess and Cylinder Chess. See [FSX-no-Site.md](FSX-no-Site.md)
 for Linux/WSL setup, local source builds and the computed-AI limitations.
 
 ### TypeScript and JavaScript checks
