@@ -61,6 +61,38 @@ class RandomModesTestCase(unittest.TestCase):
             {(entry.variant, entry.chess960) for entry in RANDOM_DICE_POOL.entries},
         )
 
+    def test_atomic960_is_distinct_from_atomic_and_replaces_racing_kings(self) -> None:
+        entries = {entry.entry_id: entry for entry in RANDOM_DICE_POOL.entries}
+        atomic, atomic960 = entries["dice-atomic"], entries["dice-atomic960"]
+        self.assertEqual((atomic.variant, atomic.chess960), ("atomic", False))
+        self.assertEqual((atomic960.variant, atomic960.chess960), ("atomic", True))
+        self.assertNotIn("dice-racingkings", entries)
+        self.assertFalse(any(entry.variant == "racingkings" for entry in entries.values()))
+        pool = replace(RANDOM_DICE_POOL, entries=(atomic, atomic960))
+        with (
+            patch.dict(RANDOM_MODE_POOLS, {pool.mode: pool}),
+            patch("random_modes.secrets.randbelow", return_value=0),
+        ):
+            self.assertEqual(
+                select_random_mode_entry(
+                    pool.mode, atomic.entry_id, recent_entry_ids=[atomic.entry_id]
+                ),
+                atomic960,
+            )
+
+    def test_atomic960_uses_randomized_starts_and_atomic_captures(self) -> None:
+        from fairy import FairyBoard
+        from fairy.chess960 import CHESS960_FENS
+
+        board = FairyBoard("atomic", chess960=True)
+        self.assertIn(board.initial_fen.split("/", 1)[0], CHESS960_FENS)
+        self.assertTrue(board.chess960)
+        self.assertTrue(board.legal_moves())
+        board = FairyBoard("atomic", "7k/8/8/8/8/8/pr6/R6K w - - 0 1", chess960=True)
+        self.assertIn("a1a2", board.legal_moves())
+        board.push("a1a2")
+        self.assertEqual(board.fen.split()[0], "7k/8/8/8/8/8/8/7K")
+
     def test_select_excludes_previous_entry_when_possible(self) -> None:
         previous_entry = WILD29_POOL.entries[0]
         expected_entry = WILD29_POOL.entries[1]
@@ -179,7 +211,7 @@ class RandomModesTestCase(unittest.TestCase):
             randbelow.assert_not_called()
 
     def test_random_dice_rematch_upgrades_old_pool_context(self) -> None:
-        for version in (1, 2, 3, 4, 5, 6, 7):
+        for version in (1, 2, 3, 4, 5, 6, 7, 8):
             with self.subTest(version=version):
                 old_context: dict[str, object] = {
                     "mode": RANDOM_MODE_DICE,
@@ -191,7 +223,7 @@ class RandomModesTestCase(unittest.TestCase):
                 rematch_context = rematch_context_for_game(old_context, "oldgame")
 
                 assert rematch_context is not None
-                self.assertEqual(rematch_context["poolVersion"], 8)
+                self.assertEqual(rematch_context["poolVersion"], 9)
                 self.assertEqual(rematch_context["previousEntryId"], "dice-chess960")
                 self.assertEqual(old_context["poolVersion"], version)
 
@@ -213,7 +245,6 @@ class RandomModesTestCase(unittest.TestCase):
                 "duck",
                 "hoppelpoppel",
                 "atomar",
-                "racingkings",
                 "fogofwar",
                 "alice",
                 "makruk",
@@ -239,7 +270,6 @@ class RandomModesTestCase(unittest.TestCase):
 
         for variant in (
             "atomar",
-            "racingkings",
             "fogofwar",
             "alice",
             "makruk",

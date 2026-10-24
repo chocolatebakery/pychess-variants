@@ -1,6 +1,6 @@
 # Terceiro motor: Fairy-Stockfish-X
 
-Integrado em 2026-10-18 e atualizado em 2026-10-19, mantendo os motores oficial e Alice separados.
+Integrado em 2026-10-18 e atualizado em 2026-10-24, mantendo os motores oficial e Alice separados.
 
 | Motor | Servidor | Browser | Variantes |
 |---|---|---|---|
@@ -66,8 +66,11 @@ da wheel exportada do Ubuntu; o build Docker nao foi executado nesta verificacao
 ## Partidas e limites
 
 Random Dice tem 29 entradas com pesos iguais quando FSX esta instalado,
-ou 24 sem FSX. A versao do pool passou a 8, acrescentando Spartan no motor
-oficial e Cylinder no FSX. Wild 29 mantem o pool ICC anterior e os seus pesos.
+ou 24 sem FSX. A versao do pool passou a 9, substituindo Racing Kings por
+Atomic960. Spartan e Atomic960 usam o motor oficial; Cylinder usa FSX.
+Atomic normal continua como entrada distinta de Atomic960. Partidas antigas
+de Racing Kings continuam acessiveis, mas deixam de sair nos sorteios.
+Wild 29 mantem o pool ICC anterior e os seus pesos.
 A criacao normal continua limitada a Wild 29 e Random Dice, sem novos ratings.
 
 Nas revanches, ambos os modos excluem as ultimas cinco entradas da mesma

@@ -227,7 +227,9 @@ customPiece1 = p:mKmDmA
                     self.assertEqual(response["type"], "new_game")
                     created = self.state.games[response["gameId"]]
                     self.assertEqual(created.variant, entry.variant)
-                    self.assertEqual(created.random_context["poolVersion"], 8)
+                    self.assertEqual(created.chess960, entry.chess960)
+                    self.assertEqual(created.board.chess960, entry.chess960)
+                    self.assertEqual(created.random_context["poolVersion"], 9)
                     self.assertIs(created.bplayer, self.opponent)
                     self.assertTrue(created.board.legal_moves())
                     if entry.variant == "fogofwar":
@@ -242,6 +244,8 @@ customPiece1 = p:mKmDmA
                     self.assertEqual(response["type"], "new_game")
                     created = self.state.games[response["gameId"]]
                     self.assertEqual(created.variant, entry.variant)
+                    self.assertEqual(created.chess960, entry.chess960)
+                    self.assertEqual(created.board.chess960, entry.chess960)
                     self.assertIs(created.bplayer, random_mover)
                     self.assertEqual(created.level, 0)
                     self.assertEqual(created.byoyomi_period, 0)
@@ -250,7 +254,7 @@ customPiece1 = p:mKmDmA
     async def test_removed_dice_variants_rematch_using_the_current_pool(self):
         random_mover = self.state.users["Random-Mover"]
         selected = RANDOM_DICE_POOL.entries[0]
-        for variant in ("shogi", "xiangqi", "janggi"):
+        for variant in ("shogi", "xiangqi", "janggi", "racingkings"):
             for opponent in (self.opponent, random_mover):
                 with self.subTest(variant=variant, bot=opponent.bot):
                     current = await self.finished_game(variant, opponent)
@@ -269,11 +273,35 @@ customPiece1 = p:mKmDmA
                     randbelow.assert_called_once_with(29 if fsx_available() else 24)
                     rematch = self.state.games[response["gameId"]]
                     self.assertEqual(rematch.variant, selected.variant)
-                    self.assertEqual(rematch.random_context["poolVersion"], 8)
+                    self.assertEqual(rematch.random_context["poolVersion"], 9)
                     self.assertEqual(rematch.random_context["previousEntryId"], "dice-" + variant)
                     self.assertEqual(current.variant, variant)
                     self.assertEqual(current.random_context["poolVersion"], 3)
                     await rematch.game_ended(self.player, "resign")
+
+    async def test_atomic960_dice_game_preserves_rules_and_context_after_reload(self):
+        entry = next(
+            entry for entry in RANDOM_DICE_POOL.entries if entry.entry_id == "dice-atomic960"
+        )
+        seek = Seek(id8(), self.player, "randomdice", color="w", player1=self.player)
+        with patch("utils.select_random_mode_entry", return_value=entry):
+            response = await join_seek(self.state, self.opponent, seek)
+        self.assertEqual(response["type"], "new_game")
+        created = self.state.games[response["gameId"]]
+        initial_fen = created.initial_fen
+        for _ in range(4):
+            await created.play_move(created.board.legal_moves()[0])
+        await created.game_ended(self.player, "resign")
+        self.state.games.pop(created.id, None)
+        restored = await load_game(self.state, created.id)
+        self.assertIsNotNone(restored)
+        self.assertEqual(restored.variant, "atomic")
+        self.assertTrue(restored.chess960)
+        self.assertTrue(restored.board.chess960)
+        self.assertEqual(restored.initial_fen, initial_fen)
+        self.assertEqual(restored.board.fen, created.board.fen)
+        self.assertEqual(restored.random_context["entryId"], "dice-atomic960")
+        self.assertEqual(restored.random_context["recentEntryIds"], ["dice-atomic960"])
 
     async def test_last_five_survive_rematches_and_database_reload(self):
         for mode in RANDOM_MODE_POOLS:
@@ -460,7 +488,7 @@ customPiece1 = p:mKmDmA
     async def test_dice_ai_rematches_switch_between_alice_and_fairy_stockfish(self):
         alice = self.state.users["Alice-Stockfish"]
         alice.online = True
-        entries = {entry.variant: entry for entry in RANDOM_DICE_POOL.entries}
+        entries = {entry.variant: entry for entry in RANDOM_DICE_POOL.entries if not entry.chess960}
         for previous, selected, old_bot, new_bot in (
             ("atomic", "alice", self.bot, alice),
             ("alice", "makruk", alice, self.bot),
@@ -493,7 +521,7 @@ customPiece1 = p:mKmDmA
         self.assertFalse(self.state.games)
 
     async def test_failed_dice_ai_rematches_leave_no_seek_or_queue(self):
-        entries = {entry.variant: entry for entry in RANDOM_DICE_POOL.entries}
+        entries = {entry.variant: entry for entry in RANDOM_DICE_POOL.entries if not entry.chess960}
         current = await self.finished_game("atomic", self.bot)
         current.random_context = random_context_for_entry("randomdice", entries["atomic"])
         games = set(self.state.games)

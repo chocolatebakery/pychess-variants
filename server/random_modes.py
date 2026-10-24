@@ -79,7 +79,7 @@ RANDOM_DICE_POOL = RandomModePool(
     mode=RANDOM_MODE_DICE,
     display_name="Random Dice",
     pool_id="random-dice-supported",
-    version=8,
+    version=9,
     entries=(
         RandomModeEntry("dice-atomic", "Atomic", "atomic"),
         RandomModeEntry("dice-orda", "Orda", "orda"),
@@ -95,7 +95,7 @@ RANDOM_DICE_POOL = RandomModePool(
         RandomModeEntry("dice-duck", "Duck Chess", "duck"),
         RandomModeEntry("dice-hoppelpoppel", "Hoppel-Poppel", "hoppelpoppel"),
         RandomModeEntry("dice-atomar", "Atomar", "atomar"),
-        RandomModeEntry("dice-racingkings", "Racing Kings", "racingkings"),
+        RandomModeEntry("dice-atomic960", "Atomic960", "atomic", chess960=True),
         RandomModeEntry("dice-fogofwar", "Fog of War", "fogofwar"),
         RandomModeEntry("dice-alice", "Alice Chess", "alice"),
         RandomModeEntry("dice-makruk", "Makruk", "makruk"),

@@ -251,7 +251,7 @@ Jogar contra a AI (Wild 29 e Random Dice):
   O Random Dice inclui 29 variantes quando FSX esta instalado, com pesos iguais:
     Atomic, Orda, Losers, Three-check, King of the Hill, Chess960, Crazyhouse,
     Horde, Seirawan Chess, Capablanca Chess, Knightmate, Duck Chess, Hoppel-Poppel,
-    Atomar, Racing Kings, Fog of War, Alice Chess, Makruk, Berolina Chess,
+    Atomar, Atomic960, Fog of War, Alice Chess, Makruk, Berolina Chess,
     Extinction Chess, Kinglet, Three Kings, Torpedo Chess, Rifle Chess,
     Brotherhood, Spell Chess, Monster Chess, Spartan e Cylinder Chess.
   Wild 29 mantem o seu pool ICC e Atomic com xeques.
